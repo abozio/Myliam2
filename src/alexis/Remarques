@@ -1,0 +1,25 @@
+Commentaire et suggestion
+	D'après la doc, il est possible de faire des merge mais je n'y arrive pas. Je les fais à la main mais c'est pas ouf.
+	
+	
+	question : est-ce qu'on ne peut pas mettre le civil state et le statut au même endroit en profitant ainsi du code négatif? 
+	
+	Bien dire quelque part que les fichiers (csv) doivent être enregistré sous la norme utf8
+	
+	
+	     - dead: if(ISMALE,
+                           logit_regr(0.0, align='data\\p_dead_m.csv'),
+                           logit_regr(0.0, align='data\\p_dead_f.csv'))
+                - show('Avg age of dead men', grpavg(age,filter=dead and ISMALE))
+ Si on met zéro pour les femmes alors on a une erreur dans le show comme si on n'avait pas le droit de mettre une condition inutile       
+ 
+ Bien recommander de choisir des noms différents aux différentes étapes du calcul...
+ 
+ Il y a un probleme si dans l'année de départ on a period=2009 et que l'on n'a pas la start period à 2010 alors il ne fait pas l'initialisation.
+ 
+ Idée faire du mensuelle, mais on n'a pas besoin de tout faire en mensuel peut-être...Mettre une option
+ 
+ 
+ recherche de periods : 
+ main : 
+ simulation : type of period, start_period - 1 dans run

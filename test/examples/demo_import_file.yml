@@ -1,0 +1,27 @@
+# second entity, links, link methods, init, procedures, local variables,
+# dump's suffix argument, choice
+entities:
+    household:
+        fields:
+            # period and id are implicit
+            - nb_persons:  {type: int, initialdata: false}
+            - nb_children: {type: int, initialdata: false}
+            - region_id:   {type: int, initialdata: false}
+
+        links:
+            persons: {type: one2many, target: person, field: hh_id}
+
+        processes:
+            init_region_id:
+                - region_id: choice([0, 1, 2, 3], [0.1, 0.2, 0.3, 0.4])
+
+            household_composition:
+                - nb_persons: countlink(persons)
+                - nb_children: countlink(persons, age < 18)
+
+            clean_empty: remove(nb_persons == 0)
+ 
+
+
+        # possible transitions and regressions. The actual list used in the
+        # simulation must be defined below
