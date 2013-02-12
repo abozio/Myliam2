@@ -6,20 +6,24 @@ import sys
 import main #je laisse le main parce que je ne veux pas travailler sur le import, je laisse celui de LIAM2
 from simulation import Simulation
 
+chemin = 'C:\\Users\\a.eidelman\\Desktop\\GenIPP_Pyth\\liam\\'
+chemin = 'T:\\Myliam2\\'
+chemin = 'M:\\Myliam2\\'
 
 #import
 sys.argv.append('import')
 #sys.argv.append('C:\\Users\\a.eidelman\\Desktop\\GenIPP_Pyth\\liam\\test\\examples\\demo_import.yml')
-sys.argv.append('C:\\Users\\a.eidelman\\Desktop\\GenIPP_Pyth\\liam\\Patrimoine\\import_pat_Didier.yml')
+fichier = chemin+'Patrimoine\\import_pat_Didier.yml'
+sys.argv.append(fichier)
 #main.main()
 
 #demo01
-fichier='C:\\Users\\a.eidelman\\Desktop\\GenIPP_Pyth\\liam\\test\\examples\\demo01.yml'
+fichier=chemin+'test\\examples\\demo01.yml'
 # on ne peut plus ajouter comme argument -i ou --interactive 
 # en revanche on pourrait préciser les tables d'entrées et de sortie si elles n'étaient pas au même endroit que le fichier yml
 
 ## ici tourne Simulation.from_yaml et éventuellement Simulation.interactive
-fichier= 'C:\\Users\\a.eidelman\\Desktop\\GenIPP_Pyth\\liam\\Patrimoine\\vieillissement5.yml'
+fichier= chemin+'Patrimoine\\vieillissement5.yml'
 #simulation= Simulation.from_yaml(fichier,
 #                     input_dir=None,
 #                    input_file=None,
