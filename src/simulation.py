@@ -109,7 +109,6 @@ class Simulation(object):
         #TODO : add an instruction in yaml_layout in so as to call an other YAML file and use it instead of a list. 
         with open(main_fpath) as f:
             content = yaml.load(f)
-        validate_dict(content, cls.yaml_layout)
         list_fpath=[]
         if "import" in content.keys():
             list_fpath = content['import'].values()
@@ -130,7 +129,7 @@ class Simulation(object):
                                     if name2 in content['entities'][name1].keys():
                                         if name2 in ('processes','macros','links'):
                                             for name3 in content1['entities'][name1][name2].keys(): 
-                                                if name3 in content1['entities'][name1][name2].keys():
+                                                if name3 in content['entities'][name1][name2].keys():
                                                     raise Exception("%s of %s is defined a second time in %s" %(name3,name1,fpath)   )
                                                 else : content['entities'][name1][name2][name3]=content1['entities'][name1][name2][name3]
                                         if name2 == 'fields':
@@ -147,6 +146,7 @@ class Simulation(object):
                 
         #XXX: use validictory instead of my custom validator?
         # http://readthedocs.org/docs/validictory/
+        print content
         validate_dict(content, cls.yaml_layout)
 
         globals_def = content.get('globals', {})
@@ -212,8 +212,7 @@ class Simulation(object):
         for ent_name, proc_defs in processes_def:
             entity = entity_registry[ent_name]
             entities.add(entity)
-            print proc_names
-            for proc_def in proc_defs:
+            for proc_def in proc_defs:           
                 # proc_def is simply a process name
                 if isinstance(proc_def, basestring):
                     # use the default periodicity of 1

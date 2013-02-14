@@ -1,0 +1,93 @@
+entities:
+    person:
+        fields:
+            - age:    int
+            - sexe:   int
+            - agegroup: {type: int, initialdata: false}
+            - agegroup_work: {type: int, initialdata: false}
+            - agegroup_civilstate: {type: int, initialdata: false}
+            - res:    int
+            - pere:   int
+            - mere:   int
+            - conjoint: int
+            
+            - civilstate: {type: int, initialdata: false}
+            - dur_in_couple: {type: float, initialdata: false}
+            - dur_separated: {type: int, initialdata: false}
+            - nb_children_ind: {type: int, initialdata: false}
+            - to_couple: {type: float, initialdata: false}
+            - to_couple2: {type: bool, initialdata: false}
+            - a_caser: {type: bool, initialdata: false}
+            - newhousehold: {type: int, initialdata: false}
+            - education_level: {type: int, initialdata: false}
+            # 1: in work, 2: unemployed including old-age unemployed,
+            # 3: in education, 4: retired, 5: other inactive
+            - workstate:  {type: int, initialdata: false}
+
+         
+        links:
+            household: {type: many2one, target: menage, field: res}
+            mater:      {type: many2one, target: person, field: mere}
+            pater:      {type: many2one, target: person, field: pere}
+            conj:      {type: many2one, target: person, field: conjoint}
+            children1:  {type: one2many, target: person, field: mere}
+            children2:  {type: one2many, target: person, field: pere}
+        # possible transitions and regressions. The actual list used in the
+        # simulation must be defined below
+        
+        
+        macros:
+            MALE: 1
+            FEMALE: 2
+            ISMALE: sexe == 1
+            ISFEMALE: sexe == 2
+
+            UNSET: 0
+
+            SINGLE: -1
+            DIVORCED: -2
+            WIDOW: -3
+            ISSINGLE: conjoint == -1
+            ISMARRIED: conjoint > 0
+            ISDIVORCED: conjoint == -2
+            ISWIDOW: conjoint == -3
+            
+            INACTIVE:  1
+            UNEMPLOYED: 2
+            NON_CADRE: 3
+            CADRE:     4
+            FONCT_A:   5
+            FONCT_S:   6
+            INDEP  :   7           
+            AVPF   :   8            
+            PRE_RET:   9 
+            RETIRED:   10 
+            STUDENT:   11
+            INWORK : 3 #à changer quand les choses seront bien faites.
+                    
+            ISINWORK:     (workstate == 3) or (workstate == 4) or (workstate == 5)  or (workstate == 6) or (workstate == 7)
+            ISUNEMPLOYED: workstate == 2
+            ISSTUDENT:    workstate == 11
+            ISRETIRED:    workstate == 10
+            ISOTHERINACTIVE: workstate == 1
+
+            IS_LOWER_SECONDARY_EDU: education_level == 2
+            IS_UPPER_SECONDARY_EDU: education_level == 3
+            IS_TERTIARY_EDU: education_level == 4
+            LOWER_SECONDARY_EDU: 2
+            UPPER_SECONDARY_EDU: 3
+            TERTIARY_EDU: 4
+            
+        processes:   
+               
+            ageing:
+                - age: age + 1
+                - agegroup: if(age < 50,
+                               5 * trunc(age / 5),
+                               10 * trunc(age / 10))
+                - show('Avg age of mother', grpavg(mater.age, filter=mater.age>-2))
+                - show('Avg age of conjoint', grpavg(conj.age, filter=conj.age>-1))
+                - agegroup_civilstate: if(age < 50,
+                                          5 * trunc(age / 5),
+                                          10 * trunc(age / 10))
+                - agegroup_work: if(age < 70, 5 * trunc(age / 5), 70) 

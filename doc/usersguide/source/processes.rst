@@ -441,6 +441,8 @@ Stochastic changes II: behavioural equations
 - Logit: 
     * logit_regr(expr[, filter=None, align='filename'])
     * logit_regr(expr[, filter=None, align=percentage])
+As it will be detail below, he logit_regr function is equivalent to align(logit_score(expr)[, filter=None, align='filename.csv']) or align(logit_score(expr)[, filter=None, align=percentage]) 
+
 
 - Alignment :
     * align(expr[, take=take_filter, leave=leave_filter], fname='filename.csv')

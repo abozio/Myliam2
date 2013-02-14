@@ -23,7 +23,9 @@ fichier=chemin+'test\\examples\\demo01.yml'
 # en revanche on pourrait préciser les tables d'entrées et de sortie si elles n'étaient pas au même endroit que le fichier yml
 
 ## ici tourne Simulation.from_yaml et éventuellement Simulation.interactive
-fichier= chemin+'Patrimoine\\vieillissement5.yml'
+fichier= chemin+'Patrimoine\\console_genebios.yml'
+fichier= chemin+'Patrimoine\\vieillissement_genebios.yml'
+fichier= chemin+'Patrimoine\\console_genebios.yml'
 #simulation= Simulation.from_yaml(fichier,
 #                     input_dir=None,
 #                    input_file=None,
@@ -41,7 +43,6 @@ simulation= Simulation.from_yaml(
                     input_file=None,
                     output_dir=None,                    
                     output_file=None)
-print "multi"
 #simulation= Simulation.from_multi_yaml([fichier,fichier],
 #                     input_dir=None,
 #                    input_file=None,

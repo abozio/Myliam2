@@ -1,0 +1,86 @@
+entities:
+    person:          
+        processes:      
+            init_couple: 
+                - civilstate : if(conj.id>0,MARRIED,SINGLE)
+                - dur_in_couple : if(conj.id>0,max(((age+conj.age)/2 - 20 ),0),0)
+                - dur_separated : 0
+                - show('Avg age of couple duration', grpavg(dur_in_couple)) 
+                
+            marriage:
+                - in_couple: ISMARRIED
+                - to_couple: 0
+                - to_couple: if((age >= 18) and (age <= 90) and not in_couple and ISSINGLE,
+                                 if(ISMALE,
+                                    logit_score(-73.10 + 8.96 * age - 0.408* age**2 + 0.00796 * age ** 3 -5.72/100000*(age ** 4)),
+                                    logit_score(-68.49 + 9.06 * age -0.441* age**2 + 0.00914 * age ** 3 -6.91/100000*(age ** 4) + 0.41*(nb_children_ind==0)) ),
+                                 to_couple)
+                - to_couple: if((age >= 18) and (age <= 90) and not in_couple and not ISSINGLE,
+                                 if(ISMALE,
+                                     logit_score(-0.25 + 0.09 *(dur_separated==0) - 0.05* (age-dur_separated)  ),
+                                     logit_score( 0.33 - 0.10 *(dur_separated==0) - 0.08* (age-dur_separated) -0.57* ISWIDOW +0.41*(nb_children_ind==0)) ),
+                                 to_couple)
+                - to_couple2: logit_regr(to_couple,
+                                 filter= to_couple>0 ,
+                                 align=0.3)
+                                 # A changer pour : grpsum(to_couple)/grpcount((age >= 18) and (age <= 90) and not in_couple))
+                - show('Number of male death', grpcount(to_couple2))
+                # vérifier qu'il n'y a pas un bouléen dans to_couple2            
+                - difficult_match: if((to_couple2==1) and ISFEMALE,
+                                      abs(age - grpavg(age, filter=(to_couple2==1) and ISMALE)),
+                                      nan)
+                - conjoint: if(to_couple2,
+                                 matching(set1filter=ISFEMALE, set2filter=ISMALE,
+                                          score=- 0.4893 * other.age
+                                                + 0.0131 * other.age ** 2
+                                                - 0.0001 * other.age ** 3
+                                                + 0.0467 * (other.age - age)
+                                                - 0.0189 * (other.age - age) ** 2
+                                                + 0.0003 * (other.age - age) ** 3,
+                                          orderby=difficult_match),
+                                 conjoint)
+                - justcoupled: (to_couple2==1) and (conjoint > 0)
+                - newhousehold: new('menage', filter=justcoupled and ISFEMALE,
+                                     region_id=choice([0, 1, 2, 3], [0.1, 0.2, 0.3, 0.4]))
+
+                - hh_id: if(justcoupled,
+                            if(ISMALE, 
+                                conj.newhousehold, 
+                                newhousehold),
+                            res)
+
+                - civilstate: if(justcoupled, MARRIED, civilstate)
+                - dur_in_couple: if(justcoupled,
+                                    0,
+                                    if(in_couple, dur_in_couple + 1, 0))
+                - csv(dump(id, age, sexe, conj.id, conj.age,
+                           conj.sexe, res, filter=justcoupled),
+                      suffix='new_couples')
+                     
+            divorce : 
+                - agediff: if(ISFEMALE and ISMARRIED, age - conj.age, 0)
+                - children_couple: 0
+                # select females to divorce
+                - divorce: logit_regr(0.6713593 * household.nb_children
+                                      - 0.0785202 * dur_in_couple
+                                      + 0.1429621 * agediff - 0.0088308 * agediff **2
+                                      - 4.546278,
+                                      filter = ISFEMALE and ISMARRIED and (dur_in_couple > 0),
+                                      align = 0.2)
+                # break link to partner
+                - to_divorce: divorce or conj.divorce
+                - conjoint: if(to_divorce, UNSET, conjoint)
+
+                - civilstate: if(to_divorce, DIVORCED, civilstate)
+                - dur_in_couple: if(to_divorce, 0, dur_in_couple)
+                # move out males
+                # à améliorer en fonction de la propriété, de qui part et tout
+                - hh_id: if(ISMALE and to_divorce,
+                            new('menage',
+                                region_id=household.region_id),
+                            res)
+
+            dump_info: csv(dump(id, age, sexe, res, household.nb_persons,
+                                mere.age, conj.age), suffix='info')
+            
+            civilstate_changes: show(groupby(civilstate, lag(civilstate)))
