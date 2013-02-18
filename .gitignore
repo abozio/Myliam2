@@ -164,6 +164,7 @@ pip-log.txt
 
 Patrimoine/data*
 person_20*
-Patrimoine/simple*
-Patrimoine/simul*
-Patrimoine/simple2009.h5
+
+*.h5
+Patrimoine\simple2009.h5
+#Patrimoine/*

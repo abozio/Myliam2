@@ -15,14 +15,14 @@ entities:
             - dur_in_couple: {type: float, initialdata: false}
             - dur_separated: {type: int, initialdata: false}
             - nb_children_ind: {type: int, initialdata: false}
-            - to_couple: {type: float, initialdata: false}
-            - to_couple2: {type: bool, initialdata: false}
-            - a_caser: {type: bool, initialdata: false}
             - newhousehold: {type: int, initialdata: false}
             - education_level: {type: int, initialdata: false}
             # 1: in work, 2: unemployed including old-age unemployed,
             # 3: in education, 4: retired, 5: other inactive
             - workstate:  {type: int, initialdata: false}
+            - tirage1:  {type: int, initialdata: false}
+            - tirage2:  {type: int, initialdata: false}
+            - score:    {type: float, initialdata: false}
 
          
         links:
@@ -44,13 +44,15 @@ entities:
 
             UNSET: 0
 
-            SINGLE: -1
-            DIVORCED: -2
-            WIDOW: -3
-            ISSINGLE: conjoint == -1
-            ISMARRIED: conjoint > 0
-            ISDIVORCED: conjoint == -2
-            ISWIDOW: conjoint == -3
+            SINGLE: 1
+            MARRIED: 2
+            DIVORCED: 3
+            WIDOW: 4
+            
+            ISSINGLE: civilstate == 1
+            ISMARRIED: civilstate == 2
+            ISDIVORCED: civilstate == 3
+            ISWIDOW: civilstate == 4
             
             INACTIVE:  1
             UNEMPLOYED: 2
@@ -64,6 +66,7 @@ entities:
             RETIRED:   10 
             STUDENT:   11
             INWORK : 3 #à changer quand les choses seront bien faites.
+            OTHERINACTIVE : 1 #à changer quand les choses seront bien faites.
                     
             ISINWORK:     (workstate == 3) or (workstate == 4) or (workstate == 5)  or (workstate == 6) or (workstate == 7)
             ISUNEMPLOYED: workstate == 2
@@ -77,6 +80,9 @@ entities:
             LOWER_SECONDARY_EDU: 2
             UPPER_SECONDARY_EDU: 3
             TERTIARY_EDU: 4
+            
+            
+            
             
         processes:   
                

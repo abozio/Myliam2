@@ -94,7 +94,9 @@ class LogitRegr(Regression):
             align_kwargs = {'expressions': [],
                             'possible_values': [],
                             'probabilities': [align]}
+            print ('je suis la1 %s' ) %align
         elif isinstance(align, basestring):
+            print ('je suis la2 %s' ) %align
             align_kwargs = {'fname': align}
         else:
             assert not align, "invalid value for align argument"
@@ -107,6 +109,7 @@ class LogitRegr(Regression):
     def build_expr(self):
         score_expr = LogitScore(self.expr)
         if self.align_kwargs is not None:
+            print self.align_kwargs
             return Alignment(score_expr, self.filter,
                              **self.align_kwargs)
         else:

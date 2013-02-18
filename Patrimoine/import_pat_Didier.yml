@@ -26,7 +26,7 @@ entities:
             - mere: int
         files: 
             - data\person2009.csv
-            - data\person.csv 
+            #- data\person.csv 
            
         # if you want to invert the value of some boolean fields (True -> False
         # and False -> True), add them to the "invert" list below.

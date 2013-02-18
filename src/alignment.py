@@ -1,3 +1,5 @@
+# -*- coding:utf-8 -*-
+
 from __future__ import print_function
 
 from itertools import izip, chain, product, count
@@ -14,6 +16,8 @@ from utils import skip_comment_cells, strip_rows, PrettyTable, unique, \
                   duplicates, unique_duplicate, prod
 from properties import (FilteredExpression, TableExpression, GroupCount,
                         add_individuals)
+
+import pdb
 
 try:
     from groupby import filter_to_indices
@@ -156,8 +160,16 @@ def extract_period(period, expressions, possible_values, probabilities):
 def align_get_indices_nd(context, filter_value, score,
                          expressions, possible_values, probabilities,
                          take_filter=None, leave_filter=None, weights=None,
-                         past_error=None):
+                         past_error=None,method="default"):
     assert len(expressions) == len(possible_values)
+    
+    print (context)
+    print (filter_value)
+    print (score)
+    print (expressions)
+    print (possible_values)
+    print (probabilities)
+        
     if filter_value is not None:
         num_to_align = np.sum(filter_value)
     else:
@@ -165,12 +177,14 @@ def align_get_indices_nd(context, filter_value, score,
 
     #TODO: allow any temporal variable
     if 'period' in [str(e) for e in expressions]:
+        print ("la1")
         period = context['period']
         expressions, possible_values, probabilities = \
             extract_period(period, expressions, possible_values,
                            probabilities)
 
     if expressions:
+        print ('la2')
         assert len(probabilities) == prod(len(pv) for pv in possible_values)
 
         # retrieve the columns we need to work with
@@ -266,7 +280,7 @@ def align_get_indices_nd(context, filter_value, score,
                 total_indices.extend(group_always)
             else:
                 num_always = 0
-
+#            pdb.set_trace()
             if affected > num_always:
                 if maybe_indices is not None:
                     group_maybe_indices = np.intersect1d(members_indices,
@@ -274,11 +288,19 @@ def align_get_indices_nd(context, filter_value, score,
                                                          assume_unique=True)
                 else:
                     group_maybe_indices = members_indices
-                if isinstance(score, np.ndarray):
+                if isinstance(score, np.ndarray) :
                     maybe_members_rank_value = score[group_maybe_indices]
-                    sorted_local_indices = np.argsort(maybe_members_rank_value)
-                    sorted_global_indices = \
-                        group_maybe_indices[sorted_local_indices]
+                    if method=='default':
+                        sorted_local_indices = np.argsort(maybe_members_rank_value)
+                        sorted_global_indices = \
+                            group_maybe_indices[sorted_local_indices]
+                    elif method=='walk':
+                        sorted_local_indices = np.random.permutation(group_maybe_indices)
+                        sorted_global_indices = \
+                            group_maybe_indices[sorted_local_indices]
+                    else :
+                        raise Exception('If not default, method option should be walk')  
+                    
                 else:
                     assert isinstance(score, (bool, int, float))
                     # if the score expression is a constant, we don't need to
@@ -288,48 +310,62 @@ def align_get_indices_nd(context, filter_value, score,
 
                 # maybe_to_take is always > 0
                 maybe_to_take = affected - num_always
-                if weights is None:
-                    # take the last X individuals (ie those with the highest
-                    # score)
-                    indices_to_take = sorted_global_indices[-maybe_to_take:]
-                else:
-                    maybe_weights = weights[sorted_global_indices]
+                if method=='default':
+                    if weights is None:
 
-                    # we need to invert the order because members are sorted
-                    # on score ascendingly and we need to take those with
-                    # highest score.
-                    weight_sums = np.cumsum(maybe_weights[::-1])
-
-                    threshold_idx = np.searchsorted(weight_sums, maybe_to_take)
-                    if threshold_idx < len(weight_sums):
-                        num_to_take = threshold_idx + 1
-                        # if there is enough weight to reach "maybe_to_take"
-                        overflow = weight_sums[threshold_idx] - maybe_to_take
-                        if overflow > 0:
-                            # the next individual has too much weight, so we
-                            # need to split it.
-                            id_to_split = sorted_global_indices[threshold_idx]
-                            past_error[group_idx] = overflow
-                            to_split_indices.append(id_to_split)
-                            to_split_overflow.append(overflow)
-                        else:
-                            # we got exactly the number we wanted
-                            assert overflow == 0
+                        # take the last X individuals (ie those with the highest
+                        # score)
+                        indices_to_take = sorted_global_indices[-maybe_to_take:]
                     else:
-                        # we can't reach our target number of individuals
-                        # (probably because of a "leave" filter), so we
-                        # take all the ones we have
-                        #XXX: should we add *this* underflow to the past_error
-                        # too? It would probably accumulate!
-                        num_to_take = len(weight_sums)
-                    indices_to_take = sorted_global_indices[-num_to_take:]
+                        maybe_weights = weights[sorted_global_indices]
+    
+                        # we need to invert the order because members are sorted
+                        # on score ascendingly and we need to take those with
+                        # highest score.
+                        if method=='default':                         
+                            weight_sums = np.cumsum(maybe_weights[::-1])
+                            threshold_idx = np.searchsorted(weight_sums, maybe_to_take)
+                            if threshold_idx < len(weight_sums):
+                                num_to_take = threshold_idx + 1
+                                # if there is enough weight to reach "maybe_to_take"
+                                overflow = weight_sums[threshold_idx] - maybe_to_take
+                                if overflow > 0:
+                                    # the next individual has too much weight, so we
+                                    # need to split it.
+                                    id_to_split = sorted_global_indices[threshold_idx]
+                                    past_error[group_idx] = overflow
+                                    to_split_indices.append(id_to_split)
+                                    to_split_overflow.append(overflow)
+                                else:
+                                    # we got exactly the number we wanted
+                                    assert overflow == 0
+                            else:
+                                # we can't reach our target number of individuals
+                                # (probably because of a "leave" filter), so we
+                                # take all the ones we have
+                                #XXX: should we add *this* underflow to the past_error
+                                # too? It would probably accumulate!
+                                num_to_take = len(weight_sums)
+                            indices_to_take = sorted_global_indices[-num_to_take:]
+                if method=='walk':                    
+                    #U draws a random number and then makes mybe_to_take step of length 1
+                    U=random.random()+np.arange(min(maybe_to_take,len(sorted_global_indices))) 
+                    # if the weoghted case maybe_to_take should be bigger than len(sorted_global_indices, 
+                    # we limit to a vector of size len(sorted_global_indices), and we cut later to have the goo
+                    # weighted value the last indice should then occurs many times at the end of infices_to_take
+                    
+                    #on the random sample, score are cumulated and then, we extract indices
+                    #of each value before each value of U
+                    indices_to_take = np.searchsorted(np.cumsum(score[sorted_local_indices]), U)
+                    indices_to_take = sorted_local_indices[indices_to_take]
+                    #we apply the same sidewalke method and keeping 
+                    if weights is not None:
+                        #TODO: test that case
+                        maybe_weights = weights[indices_to_take]                         
+                        weight_sums = np.cumsum(maybe_weights[::-1])
+                        threshold_idx = np.searchsorted(weight_sums, maybe_to_take)
+                        indices_to_take = indices_to_take[:(threshold_idx+1)]
 
-                underflow = maybe_to_take - len(indices_to_take)
-                if underflow > 0:
-                    total_underflow += underflow
-                total_indices.extend(indices_to_take)
-            elif affected < num_always:
-                total_overflow += num_always - affected
 # this assertion is only valid in the non weighted case
 #    assert len(total_indices) == \
 #           total_affected + total_overflow - total_underflow
@@ -556,12 +592,11 @@ class Alignment(FilteredExpression):
     def __init__(self, score_expr, filter=None, take=None, leave=None,
                  fname=None,
                  expressions=None, possible_values=None, probabilities=None,
+                 method='default',
                  on_overflow='default'):
         super(Alignment, self).__init__(score_expr, filter)
 
-        assert ((expressions is not None and
-                 possible_values is not None and
-                 probabilities is not None) or
+        assert ((expressions is not None and possible_values is not None and probabilities is not None) or
                 (fname is not None))
 
         if fname is not None:
@@ -576,7 +611,8 @@ class Alignment(FilteredExpression):
         self.leave_filter = leave
         self.on_overflow = on_overflow
         self.overflows = None
-
+        self.method=method
+        
     def traverse(self, context):
         for node in FilteredExpression.traverse(self, context):
             yield node
@@ -698,7 +734,7 @@ class Alignment(FilteredExpression):
                                  self.expressions, self.possible_values,
                                  self.probabilities,
                                  take_filter, leave_filter, weights,
-                                 self.overflows)
+                                 self.overflows,self.method)
 
         if overflows is not None:
             to_split_indices, to_split_overflow = overflows

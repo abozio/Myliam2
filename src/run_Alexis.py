@@ -26,6 +26,7 @@ fichier=chemin+'test\\examples\\demo01.yml'
 fichier= chemin+'Patrimoine\\console_genebios.yml'
 fichier= chemin+'Patrimoine\\vieillissement_genebios.yml'
 fichier= chemin+'Patrimoine\\console_genebios.yml'
+fichier= chemin+'Patrimoine\\console_test.yml'
 #simulation= Simulation.from_yaml(fichier,
 #                     input_dir=None,
 #                    input_file=None,
