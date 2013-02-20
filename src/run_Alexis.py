@@ -13,7 +13,7 @@ chemin = 'M:\\Myliam2\\'
 #import
 sys.argv.append('import')
 #sys.argv.append('C:\\Users\\a.eidelman\\Desktop\\GenIPP_Pyth\\liam\\test\\examples\\demo_import.yml')
-fichier = chemin+'Patrimoine\\import_pat_Didier.yml'
+fichier = chemin+'Genebios\\import_pat_Didier.yml'
 sys.argv.append(fichier)
 #main.main()
 
@@ -23,10 +23,11 @@ fichier=chemin+'test\\examples\\demo01.yml'
 # en revanche on pourrait préciser les tables d'entrées et de sortie si elles n'étaient pas au même endroit que le fichier yml
 
 ## ici tourne Simulation.from_yaml et éventuellement Simulation.interactive
-fichier= chemin+'Patrimoine\\console_genebios.yml'
-fichier= chemin+'Patrimoine\\vieillissement_genebios.yml'
-fichier= chemin+'Patrimoine\\console_genebios.yml'
-fichier= chemin+'Patrimoine\\console_test.yml'
+fichier= chemin+'Genebios\\console_genebios.yml'
+fichier= chemin+'Genebios\\vieillissement_genebios.yml'
+fichier= chemin+'Genebios\\console_test.yml'
+fichier= chemin+'Genebios\\console_genebios.yml'
+
 #simulation= Simulation.from_yaml(fichier,
 #                     input_dir=None,
 #                    input_file=None,

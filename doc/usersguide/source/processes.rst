@@ -86,7 +86,7 @@ Since actions don't return any value, they do not need a variable to store that
 result, and they only ever need the condensed form: ::
 
     processes:
-        process_name: action expression
+        process_name: action_expression
         ...
 
 *example* ::
@@ -181,6 +181,13 @@ Actions inside procedures don't even need a process name.
 
 Expressions
 ===========
+
+Expressions can either change a field, either change the database by adding or
+removing an entity. In that section, we will study firt expression that change
+a fields and then, the called life-cycle function. 
+
+For the first ones, be always carefull not to change a field type, between a
+boolean and an int for example. 
 
 Deterministic changes
 ---------------------
@@ -438,80 +445,35 @@ blue collar worker is lowest (8 and 4%, respectively) for those having the highe
 Stochastic changes II: behavioural equations
 --------------------------------------------
 
-- Logit: 
-    * logit_regr(expr[, filter=None, align='filename'])
-    * logit_regr(expr[, filter=None, align=percentage])
-As it will be detail below, he logit_regr function is equivalent to align(logit_score(expr)[, filter=None, align='filename.csv']) or align(logit_score(expr)[, filter=None, align=percentage]) 
-
-
-- Alignment :
-    * align(expr[, take=take_filter, leave=leave_filter], fname='filename.csv')
-- Continuous (expr + normal(0, 1) * mult + error_var): cont_regr(expr[, filter=None, mult=0.0, error_var=None])
-- Clipped continuous (always positive): clip_regr(expr[, filter=None, mult=0.0, error_var=None])
-- Log continuous (exponential of continuous): log_regr(expr[, filter=None, mult=0.0, error_var=None])
-
-
-*example* ::
-
-    divorce: logit_regr(0.6713593 * household.nch12_15
-                        - 0.0785202 * dur_in_couple
-                        + 0.1429621 * agediff,
-                        filter=FEMALE and (civilstate == 2),
-                        align='al_p_divorce.csv')
-
-    wage_earner: if((age > 15) and (age < 65) and inwork,
-                    if(MALE,
-                       align(wage_earner_score,
-                             fname='al_p_wage_earner_m.csv'),
-                       align(wage_earner_score,
-                             fname='al_p_wage_earner_f.csv')),
-                    False)
-
-.. index:: logit_regr
-
-logit_regr
-~~~~~~~~~~
-
-Suppose that we have a logit regression that relates the probability of some
-event to explanatory variables X.
-
-    p*i=logit-1(ßX + EPSi)
-
-This probability consists of a deterministic element (as before), completed by a
-stochastic element, EPSi, a log-normally distributed random variable. The
-condition for the event occurring is p*i > 0.5.
-
-Instead, suppose that we want the proportional occurrences of the event to be equal to an overall proportion X. In that
-case, the variable p*i sets the rank of individual i according to the risk that the relevant event will happen. Then only
-the first X*N individuals in the ranking will experience the event. This process is known as ‘alignment’.
-
-In case of one logit with one alignment process -or a logit without alignment-,
-*logit_regr* will result in the logit returning a Boolean whether the event is
-simulated. In this case, the setup becomes: ::
-
-    - single_align: logit_regr(<logit arguments>,
-                               [filter=<filter arguments>,
-                               align='name.csv'])
-
-*example* ::
-
-    birth:
-        - to_give_birth: logit_regr(0.0,
-                                    filter=FEMALE and
-                                           (age >= 15) and (age <= 50),
-                                    align='al_p_birth.csv')
-
-The above generic setup describes the situation where one logit pertains to one
-alignment process.
 
 .. index:: logit_score
 
 logit_score
 ~~~~~~~~~~~
 
-In many cases, however, it is convenient to use multiple logits with the same alignment process. In this case, using  a **logit_score** instead of
-**logit_regr** will result in the logit returning intermediate scores that - for all conditions together- are the inputs of the
-alignment process. A typical behavioural equation with alignment has the following syntax: ::
+The logit of a number p between 0 and 1 is given by the formula:
+
+	logit(p) = log(p / p-1)
+
+The idea here is to transform a probability stuck between 0 and 1 in a any 
+real number. The inverse function in even more important as she take any real
+number in order to make a probability of it.
+The inverse function of logit is the logistic function : 
+	
+	logistic(a) = 1 / ( 1+exp(-a) )  
+
+The logit_score function applied to a returns basically logistic(a)
+but in addition, it adds a random part which will be explained in the 
+align section. 
+
+In fact, logit_score, draw an random number between 0 and 1 and return : 
+
+	logit_score(a) = logistic( a - logit (u) )
+	
+That expression is very useful in behavioural equation. Note that due to the random draw, the logit_score p*i is in between -1 and 1.
+
+We will see below that the logit_regr function can often be used as a shortcut and restict the use of logit_score. However, 
+using logit_score is better for readability: ::
 
         name_process:
             # initialise the score to -1
@@ -527,7 +489,48 @@ alignment process. A typical behavioural equation with alignment has the followi
                                  score_variable)
 
             # ... other conditions ...
+            
+            # to be continued...
 
+
+A behavioural equation starts by creating a score that reflects the event risk p*i. 
+In a first sub-process, a variable *score_variable* is set equal to -1, because this makes it highly
+unlikely that the event will happen to those not included in the conditions for which the logit is applied. As said before, -1
+is the lowest value possible for logit_score. 
+Next, subject to conditions *condition_1* and *condition_2*, this score is simulated on the basis of estimated logits. The specification
+*logit_score* results in the logit not returning a Boolean but instead a score.
+
+Note that by specifying the endogenous variable *score_variable* without any transformations under the ‘ELSE’ condition makes
+sure that the score variable is not manipulated by a sub-process it does not pertain to.
+
+
+.. index:: align, take, leave
+
+align
+~~~~~
+
+After this step, the score is known and this is the input for the alignment process. 
+ suppose that we want the proportional occurrences of the event to be equal to an overall proportion X. In that
+case, the variable p*i sets the rank of individual i according to the risk that the relevant event will happen. Then only
+the first X*N individuals in the ranking will experience the event. This process is known as ‘alignment’.
+To know more about the alignment process reading Evaluating Alignment Methods in Dynamic Microsimulation Models, 
+by Li and O'Donoghue is advised. 
+The methodology used for now by Liam2 is to draw the highest scores in order to have the good transition number. Introduction of 
+a random term let the possibility to a small but non zero probability to be drawn even if there is bigger ones. 
+
+The general structure to run an alignment in Liam2 takes that form : :: 
+
+    align(score_variable,
+          filter=conditions,
+          [take=conditions,]
+          [leave=conditions,]
+          fname='name.csv')
+          
+The file *name.csv* contains the alignment data.
+
+ Suppose -as is mostly the case- that alignment data exists for men and women separately. Then the alignment process starts 
+ by a *if* to gender. Next comes the align command itself. So the code in previous section could be continued as follows : ::
+ 
             # do alignment based on the scores calculated above
             - name_endogenous_variable:
                 if(condition,
@@ -542,32 +545,7 @@ alignment process. A typical behavioural equation with alignment has the followi
                             fname='filename_f.csv')),
                    False)
 
-The equation needs to simulate the variable *name_endogenous_variable*. It starts however by creating a score that reflects
-the event risk p*i. In a first sub-process, a variable *name_score* is set equal to -1, because this makes it highly
-unlikely that the event will happen to those not included in the conditions for which the logit is applied. Next, subject to
-conditions *condition_1* and *condition_2*, this score is simulated on the basis of estimated logits. The specification
-*logit_score* results in the logit not returning a Boolean but instead a score.
-
-Note that by specifying the endogenous variable *name_score* without any transformations under the ‘ELSE’ condition makes
-sure that the score variable is not manipulated by a sub-process it does not pertain to.
-
-
-.. index:: align, take, leave
-
-align
-~~~~~
-
-After this step, the score is known and this is the input for the alignment process. Suppose -as is mostly the case- that
-alignment data exists for men and women separately. Then the alignment process starts by a *if* to gender. Next comes the
-align command itself. This takes the form ::
-
-    align(score_variable,
-          filter=conditions,
-          [take=conditions,]
-          [leave=conditions,]
-          fname='name.csv')
-
-The file *name.csv* contains the alignment data. A standard setup is that the file starts with the prefix *al_* followed by
+ A standard setup is that the file starts with the prefix *al_* followed by
 the name of the endogenous variable and a suffix *_m* or *_f*, depending on gender.
 
 The optional *take* and *leave* commands forces inclusion or exclusion of objects with specified characteristics in
@@ -592,11 +570,13 @@ leave* by setting the a priori score variable *wage_earner_score* to -1. This ma
 selection probability for those not specified in the process is very low (but not zero, as in the case of *leave*
 conditions).
 
+.. 
 Next come three sub processes setting a couple of common conditions, in the form of local (temporary) variables. These three sub-
 processes are followed by six subsequent *if* conditions, separating the various behavioural equations to the sub-sample
 they pertain to. The first three sub conditions pertain to women and describe the probability of being a wage-earner from in
 work and employee previous year (1) from in work but not employee previous year (2), and from not in work previous year
 (3). The conditions 4 to 6 describe the same transitions but for women. ::
+
 
     wage_earner_process:
         - wage_earner_score: -1
@@ -666,6 +646,145 @@ files. No ‘take’ or ‘leave’ conditions are specified in this case.
 
 Note that the population to align is the population specified in the first condition, here *(age>15) and (age<65) and (inwork)* and not the
 whole population.
+
+.. index:: logit_regr
+
+logit_regr
+~~~~~~~~~~
+
+The general use of logit_regr takes this form :  ::
+
+    - single_align: logit_regr(<logit arguments>,
+                               [filter=<filter arguments>,
+                               align='name.csv'])
+
+That function returns a boolean with value 1 if drawn.
+
+The first step of the logit_regr function is to evaluate the logit_score.
+This probability consists of a given deterministic element (as before), completed by a
+stochastic element, u, which is finally a log-normally distributed random variable.
+
+Without algin argument, the condition for the event occurring is p*i > 0.5.
+
+In case of one logit with one alignment process  the setup becomes: ::
+
+    * logit_regr(expr[, filter=None, align='filename'])
+    * logit_regr(expr[, filter=None, align=percentage])
+
+In that case, the logit_regr function is equivalent to align(logit_score(expr)[, filter=None, align='filename.csv']) 
+or align(logit_score(expr)[, filter=None, align=percentage]) 
+
+
+*example* ::
+
+    birth:
+        - to_give_birth: logit_regr(0.0,
+                                    filter=FEMALE and
+                                           (age >= 15) and (age <= 50),
+                                    align='al_p_birth.csv')
+
+The above generic setup describes the situation where one logit pertains to one
+alignment process.
+
+other : TODO
+~~~~~~~~~~
+- Continuous (expr + normal(0, 1) * mult + error_var): cont_regr(expr[, filter=None, mult=0.0, error_var=None])
+- Clipped continuous (always positive): clip_regr(expr[, filter=None, mult=0.0, error_var=None])
+- Log continuous (exponential of continuous): log_regr(expr[, filter=None, mult=0.0, error_var=None])
+
+
+
+.. index:: matching
+
+Matching functions
+------------------
+
+**matching**: (aka Marriage market) matches individuals from set 1 with
+individuals from set 2. For each individual in set 1 following a particular
+order (given by the expression in the *orderby* argument), the function computes
+the score of all (unmatched) individuals in set 2 and take the best scoring one.
+
+You have to specify the boolean filters which provide the two sets to match
+(set1filter and set2filter), the criterion to decide in which order the
+individuals of the first set are matched and the expression that will be used
+to assign a score to each individual of the second set (given a particular
+individual in set 1).
+
+In the score expression the fields of the set 1 individual can be used normally
+and the fields of its possible partners can be used by prefixing them by
+"**other.**".
+
+*generic setup* ::
+
+    matching(set1filter=boolean_expr,
+             set2filter=boolean_expr,
+             orderby=difficult_match,
+             score=coef1 * field1 + coef2 * other.field2 + ...)
+
+The generic setup of the marriage market is simple; one needs to have selected
+those individuals who are to be coupled (*to_couple*=true). Furthermore, one
+needs to have a variable (*difficult_match*) which can be used to rank
+individuals according how easy they are to match. Finally, we need a function
+(*score*) matching potential partners.
+
+In the first step, and for those persons that are selected to be coupled, potential partners are matched in the order set by
+*difficult_match* and each woman is matched with the potential partner with the highest matching score. Once this is done,
+both individuals become actual partners and the partner identification numbers are set so that the partner number of each
+person equals the identification number of the partner.
+
+*example* ::
+
+    marriage:
+        - in_couple: MARRIED or COHAB
+        - to_couple: if((age >= 18) and (age <= 90) and not in_couple,
+                        if(MALE,
+                           logit_regr(0.0, align='al_p_mmkt_m.csv'),
+                           logit_regr(0.0, align='al_p_mmkt_f.csv')),
+                        False)
+        - avg_age_males_to_couple: grpavg(age, filter=to_couple and MALE)
+        - difficult_match: if(to_couple and FEMALE,
+                              abs(age - avg_age_males_to_couple),
+                              nan)
+        - work: (workstate > 0) and (workstate < 5)
+        - partner_id: if(to_couple,
+                         matching(set1filter=FEMALE, set2filter=MALE,
+                                  orderby=difficult_match,
+                                  score=- 0.4893 * other.age
+                                        + 0.0131 * other.age ** 2
+                                        - 0.0001 * other.age ** 3
+                                        + 0.0467 * (other.age - age)
+                                        - 0.0189 * (other.age - age) ** 2
+                                        + 0.0003 * (other.age - age) ** 3
+                                        - 0.9087 * (other.work and not work)
+                                        - 1.3286 * (not other.work and work)
+                                        - 0.6549 * (other.work and work)),
+                         partner_id)
+        - coupled: to_couple and (partner_id != -1)
+        - newhousehold: new('household', filter=coupled and FEMALE,
+                            start_period=period,
+                            region_id=choice([0, 1, 2, 3],
+                                             [0.1, 0.2, 0.3, 0.4]))
+        - household_id: if(coupled,
+                           if(MALE, partner.newhousehold, newhousehold),
+                           household_id)
+
+
+The code above shows an application. First of all, individuals eligible for
+marriage are all those between 18 and 90 who are not a part of a couple; the
+actual decision who is eligible is left to the alignment process. Next, for
+every women eligible to coupling, the variable *difficult_match* is the
+difference between her age and the average age of men eligible for coupling.
+
+In a third step, for each eligible woman in turn (following the order set by
+*difficult_match*), all eligited men are assigned a score and the man with the
+best score is matched with that woman. This score depends on his age, his
+difference in age with the woman and the the work status of the potential
+partners.
+
+In a next step, a new household is created for women who have just become a part
+of a couple. Their household number, as well as their new partners is then
+updated to reflect their new household.
+
 
 .. index:: lifecycle functions
 
@@ -811,97 +930,6 @@ scheduled for death. Also, in that case, the partner identification code is
 erased. All other procedures describing the heritage process should be included
 here. Finally, the *remove* command is called to removes the *dead* from the
 simulation dataset.
-
-.. index:: matching
-
-Matching functions
-------------------
-
-**matching**: (aka Marriage market) matches individuals from set 1 with
-individuals from set 2. For each individual in set 1 following a particular
-order (given by the expression in the *orderby* argument), the function computes
-the score of all (unmatched) individuals in set 2 and take the best scoring one.
-
-You have to specify the boolean filters which provide the two sets to match
-(set1filter and set2filter), the criterion to decide in which order the
-individuals of the first set are matched and the expression that will be used
-to assign a score to each individual of the second set (given a particular
-individual in set 1).
-
-In the score expression the fields of the set 1 individual can be used normally
-and the fields of its possible partners can be used by prefixing them by
-"**other.**".
-
-*generic setup* ::
-
-    matching(set1filter=boolean_expr,
-             set2filter=boolean_expr,
-             orderby=difficult_match,
-             score=coef1 * field1 + coef2 * other.field2 + ...)
-
-The generic setup of the marriage market is simple; one needs to have selected
-those individuals who are to be coupled (*to_couple*=true). Furthermore, one
-needs to have a variable (*difficult_match*) which can be used to rank
-individuals according how easy they are to match. Finally, we need a function
-(*score*) matching potential partners.
-
-In the first step, and for those persons that are selected to be coupled, potential partners are matched in the order set by
-*difficult_match* and each woman is matched with the potential partner with the highest matching score. Once this is done,
-both individuals become actual partners and the partner identification numbers are set so that the partner number of each
-person equals the identification number of the partner.
-
-*example* ::
-
-    marriage:
-        - in_couple: MARRIED or COHAB
-        - to_couple: if((age >= 18) and (age <= 90) and not in_couple,
-                        if(MALE,
-                           logit_regr(0.0, align='al_p_mmkt_m.csv'),
-                           logit_regr(0.0, align='al_p_mmkt_f.csv')),
-                        False)
-        - avg_age_males_to_couple: grpavg(age, filter=to_couple and MALE)
-        - difficult_match: if(to_couple and FEMALE,
-                              abs(age - avg_age_males_to_couple),
-                              nan)
-        - work: (workstate > 0) and (workstate < 5)
-        - partner_id: if(to_couple,
-                         matching(set1filter=FEMALE, set2filter=MALE,
-                                  orderby=difficult_match,
-                                  score=- 0.4893 * other.age
-                                        + 0.0131 * other.age ** 2
-                                        - 0.0001 * other.age ** 3
-                                        + 0.0467 * (other.age - age)
-                                        - 0.0189 * (other.age - age) ** 2
-                                        + 0.0003 * (other.age - age) ** 3
-                                        - 0.9087 * (other.work and not work)
-                                        - 1.3286 * (not other.work and work)
-                                        - 0.6549 * (other.work and work)),
-                         partner_id)
-        - coupled: to_couple and (partner_id != -1)
-        - newhousehold: new('household', filter=coupled and FEMALE,
-                            start_period=period,
-                            region_id=choice([0, 1, 2, 3],
-                                             [0.1, 0.2, 0.3, 0.4]))
-        - household_id: if(coupled,
-                           if(MALE, partner.newhousehold, newhousehold),
-                           household_id)
-
-
-The code above shows an application. First of all, individuals eligible for
-marriage are all those between 18 and 90 who are not a part of a couple; the
-actual decision who is eligible is left to the alignment process. Next, for
-every women eligible to coupling, the variable *difficult_match* is the
-difference between her age and the average age of men eligible for coupling.
-
-In a third step, for each eligible woman in turn (following the order set by
-*difficult_match*), all eligited men are assigned a score and the man with the
-best score is matched with that woman. This score depends on his age, his
-difference in age with the woman and the the work status of the potential
-partners.
-
-In a next step, a new household is created for women who have just become a part
-of a couple. Their household number, as well as their new partners is then
-updated to reflect their new household.
 
 
 Output

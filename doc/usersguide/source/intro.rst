@@ -20,6 +20,10 @@ almost any microsimulation model as long as it use cross-sectional ageing, ie
 all individuals are simulated at the same time for one period, then for the next
 period, etc.
 
+.. LIAM2 is already used in the MiDaL project and currently in the developpement
+.. of GenIPP (link) and other
+.. see in annexe a list of paper wrote with microsimulation model using Liam
+
 You can find the latest version of LIAM2 and this documentation at:
 http://liam2.plan.be
 

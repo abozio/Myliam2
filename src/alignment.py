@@ -163,12 +163,6 @@ def align_get_indices_nd(context, filter_value, score,
                          past_error=None,method="default"):
     assert len(expressions) == len(possible_values)
     
-    print (context)
-    print (filter_value)
-    print (score)
-    print (expressions)
-    print (possible_values)
-    print (probabilities)
         
     if filter_value is not None:
         num_to_align = np.sum(filter_value)
@@ -177,14 +171,12 @@ def align_get_indices_nd(context, filter_value, score,
 
     #TODO: allow any temporal variable
     if 'period' in [str(e) for e in expressions]:
-        print ("la1")
         period = context['period']
         expressions, possible_values, probabilities = \
             extract_period(period, expressions, possible_values,
                            probabilities)
 
     if expressions:
-        print ('la2')
         assert len(probabilities) == prod(len(pv) for pv in possible_values)
 
         # retrieve the columns we need to work with
@@ -359,6 +351,7 @@ def align_get_indices_nd(context, filter_value, score,
                     indices_to_take = np.searchsorted(np.cumsum(score[sorted_local_indices]), U)
                     indices_to_take = sorted_local_indices[indices_to_take]
                     #we apply the same sidewalke method and keeping 
+                    # on peut donc enlever ça, si on ne fait plus de weight
                     if weights is not None:
                         #TODO: test that case
                         maybe_weights = weights[indices_to_take]                         

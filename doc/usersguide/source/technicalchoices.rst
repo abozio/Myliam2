@@ -1,4 +1,4 @@
-﻿.. index:: python, hdf5, yaml
+﻿.. index:: python, hdf5, yaml, weigth
 
 Technical choices
 #################
@@ -11,6 +11,19 @@ We use the Python language (http://www.python.org/) for the development of LIAM 
     Python runs on Windows, Linux/Unix, Mac OS X, and has been ported to the Java and .NET virtual machines.
 
     Python is free to use, even for commercial products, because of its OSI-approved open source license.
+    
+    The actual version of source code downloadable on http://liam2.plan.be/ runs under the 2.7.3 version of 32-bit Python and
+    uses the following library : 
+    
+    -  Numpy 1.6.2
+    
+    -  Numexpr 2.0.1
+    
+    -  PyTables 2.3.1
+    
+    -  Carray 0.5
+    
+    -  PyYAML 3.10
     
 HDF5    
 ----
@@ -37,3 +50,9 @@ The definition of the data and the model is done in the YAML-language (http://ww
     YAML: YAML Ain't Markup Language
 
     What It Is: YAML is a human friendly data serialization standard for all programming languages.
+    
+    
+Weight
+------
+
+There is two option. To be continued...

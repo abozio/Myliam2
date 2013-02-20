@@ -136,7 +136,8 @@ stored for each period in the output file.
 However, in practice, there are often some fields which are not present in the
 input file. They will need to be calculated later by the model, and you need to
 tell LIAM2 that the field is missing, by using "initialdata: false" in the
-definition for that field (see the *agegroup* variable in the example below).
+definition for that field (see the *agegroup* variable in the example below). 
+
 
 *example* ::
 
@@ -149,6 +150,7 @@ definition for that field (see the *agegroup* variable in the example below).
 Field names must be unique per entity (i.e. several entities may have a field
 with the same name). 
 
+Temporary variables are not considered as a field and don't have to be declared.
 
 links
 -----
@@ -157,14 +159,22 @@ Entities can be linked with each other or with other entities, for example,
 individuals belong to households, and mothers are linked to their children, 
 while partners are interlinked as well.
 
+LIAM 2 allows two types of links: many2one and one2many. 
 A typical link has the following form: ::
 
     name: {type: <type>, target: <entity>, field: <name of link field>}
     
 LIAM 2 uses integer fields to establish links between entities. Those
-integer fields contain the id-number of the linked individual.    
+integer fields contain the id-number of the linked individual. To save space
+and memory, one could think of using a link field to code a status with 
+negative values. For example, a field partner_id with the id-number when the
+person is in a relationship and with value -1 when single, -2 when 
+divorced and -3 when widow. However, even if possible, that method is not advised.
+The win associated is often small compared to the risk of having the program 
+looking for someone with a -1 id-number.
 
-LIAM 2 allows two types of links: many2one and one2many.
+
+
 
 More detail, see :ref:`links_label`.
 
@@ -226,6 +236,10 @@ simulation
 The *simulation* block includes the location of the datasets (**input**, **output**), the number of periods and
 the start period. It sets what processes defined in the **entities** block are simulated (since some can be
 omitted), and the order in which this is done.
+
+Please, note that even if in the given examples, periods seem to be year, the time period can have other
+interpretation, a month for example. In that case, it is better to have all values expressed in that time 
+period. Age should an age in month and then still an integer more than be a float.
 
 Suppose that we have a model that starts in 2002 and has to simulate for 10 periods. Furthermore, suppose that we have two
 object or entities: individuals and households. The model starts by some initial processes (grouped under the header *init*)

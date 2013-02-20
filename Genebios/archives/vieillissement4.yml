@@ -1,0 +1,191 @@
+# second entity, links, link methods, init, procedures, local variables,
+# dump's suffix argument, choice
+entities:
+    menage:
+        fields:
+            # period and id are implicit
+            - nb_persons:  {type: int, initialdata: false}
+            - nb_children: {type: int, initialdata: false}
+            - region_id:   {type: int, initialdata: false}
+            
+        links:
+            persons: {type: one2many, target: person, field: res}
+            
+        processes:
+            init_region_id:
+                - region_id: choice([0, 1, 2, 3], [0.1, 0.2, 0.3, 0.4])
+
+            household_composition:
+                - nb_persons: countlink(persons)
+                - nb_children: countlink(persons, age < 18)
+                
+    person:
+        fields:
+            - age:    int
+            - sexe:   int
+            - agegroup: {type: int, initialdata: false}
+            - res:    int
+            - pere:   int
+            - mere:   int
+            - conjoint: int
+            
+            - civilstate: {type: int, initialdata: false}
+            - dur_in_couple: {type: float, initialdata: false}
+            - dur_separated: {type: int, initialdata: false}
+            - nb_children_ind: {type: int, initialdata: false}
+            - to_couple: {type: float, initialdata: false}
+            - to_couple2: {type: bool, initialdata: false}
+            - a_caser: {type: bool, initialdata: false}
+            - newhousehold: {type: int, initialdata: false}
+         
+        links:
+            household: {type: many2one, target: menage, field: res}
+            mere:      {type: many2one, target: person, field: mere}
+            pere:      {type: many2one, target: person, field: pere}
+            conj:      {type: many2one, target: person, field: conjoint}
+            children1:  {type: one2many, target: person, field: mere}
+            children2:  {type: one2many, target: person, field: pere}
+        # possible transitions and regressions. The actual list used in the
+        # simulation must be defined below
+        
+        
+        macros:
+            MALE: 1
+            FEMALE: 2
+            ISMALE: sexe == 1
+            ISFEMALE: sexe == 2
+
+            UNSET: 0
+
+            SINGLE: 1
+            MARRIED: 2
+            DIVORCED: 3
+            WIDOW: 4
+            ISSINGLE: civilstate == 1
+            ISMARRIED: civilstate == 2
+            ISDIVORCED: civilstate == 3
+            ISWIDOW: civilstate == 4
+            
+            
+        processes:
+            
+            init_couple: 
+                - civilstate : if(conj.id>0,MARRIED,SINGLE)
+                - dur_in_couple : if(conj.id>0,max(((age+conj.age)/2 - 20 ),0),0)
+                - dur_separated : 0
+                - show('Avg age of couple duration', grpavg(dur_in_couple))
+               
+            ageing:
+                - age: age + 1
+                - agegroup: if(age < 50,
+                               5 * trunc(age / 5),
+                               10 * trunc(age / 10))
+                - show('Avg age of mother', grpavg(mere.age, filter=mere.age>-2))
+                - show('Avg age of conjoint', grpavg(conj.age, filter=conj.age>-1))
+
+            birth:
+                
+                - nb_children_ind: countlink(children1) + countlink(children2)
+                - to_give_birth: logit_regr(0.0,
+                                            filter=ISFEMALE and (age >= 15) and (age <= 50),
+                                            align='data\\p_birth.csv')
+                - new('person', filter=to_give_birth,
+                      mere = id,
+                      pere = conj.id,
+                      res = res,
+                      age = 0,
+                      conjoint = 0,
+                      civilstate = SINGLE,
+                      sexe = choice([1,2], [0.51, 0.49])
+                      )               
+                - show('Avg age of "young" mother', grpavg(age, filter=to_give_birth and ISFEMALE))
+                - show('Avg age of mother', grpavg(mere.age, filter=mere.age>-1))  #la condition -1 permet de ne prendre que les vraies meres ! 
+                - show('Number of birth', grpcount(age==0))
+                - show('Avg age of conjoint', grpavg(conj.age, filter=conj.age>-1))
+             
+            death:
+                - dead: if(ISMALE,
+                           logit_regr(0.0, align='data\\p_dead_m.csv'),
+                           logit_regr(0.0, align='data\\p_dead_f.csv'))
+                #- civilstate: if(partner.dead, WIDOW, civilstate)
+                - show('Avg age of conjoint', grpavg(conj.age, filter=conj.age>-1))
+                - conjoint: if(conj.dead, UNSET, conjoint)
+                - show('Avg age of dead men', grpavg(age,filter=dead and ISMALE))
+                - show('Avg age of dead women', grpavg(age,filter=dead and ISFEMALE))
+                - show('Number of male death', grpcount(dead and ISMALE))
+                - show('Number of male death', grpcount(dead and ISFEMALE))
+                - show('Number of male death', grpcount(dead))
+                #- show('Avg age of dead women', grpavg(age, filter=dead and ISFEMALE))
+                #- show('Widows', grpsum(ISWIDOW))
+                - remove(dead)       
+                
+                
+            marriage:
+
+                - in_couple: ISMARRIED
+                - to_couple: 0
+                - to_couple: if((age >= 18) and (age <= 90) and not in_couple and ISSINGLE,
+                                 if(ISMALE,
+                                    logit_score(-73.10 + 8.96 * age - 0.408* age**2 + 0.00796 * age ** 3 -5.72/100000*(age ** 4)),
+                                    logit_score(-68.49 + 9.06 * age -0.441* age**2 + 0.00914 * age ** 3 -6.91/100000*(age ** 4) + 0.41*(nb_children_ind==0)) ),
+                                 to_couple)
+                - to_couple: if((age >= 18) and (age <= 90) and not in_couple and not ISSINGLE,
+                                 if(ISMALE,
+                                     logit_score(-0.25 + 0.09 *(dur_separated==0) - 0.05* (age-dur_separated)  ),
+                                     logit_score( 0.33 - 0.10 *(dur_separated==0) - 0.08* (age-dur_separated) -0.57* ISWIDOW +0.41*(nb_children_ind==0)) ),
+                                 to_couple)
+                - to_couple2: logit_regr(to_couple,
+                                 filter= to_couple>0 ,
+                                 align=0.3)
+                                 # A changer pour : grpsum(to_couple)/grpcount((age >= 18) and (age <= 90) and not in_couple))
+                - show('Number of male death', grpcount(to_couple2))
+                # vérifier qu'il n'y a pas un bouléen dans to_couple2            
+                - difficult_match: if((to_couple2==1) and ISFEMALE,
+                                      abs(age - grpavg(age, filter=(to_couple2==1) and ISMALE)),
+                                      nan)
+                - conjoint: if(to_couple2,
+                                 matching(set1filter=ISFEMALE, set2filter=ISMALE,
+                                          score=- 0.4893 * other.age
+                                                + 0.0131 * other.age ** 2
+                                                - 0.0001 * other.age ** 3
+                                                + 0.0467 * (other.age - age)
+                                                - 0.0189 * (other.age - age) ** 2
+                                                + 0.0003 * (other.age - age) ** 3,
+                                          orderby=difficult_match),
+                                 conjoint)
+                - justcoupled: (to_couple2==1) and (conjoint > 0)
+                - newhousehold: new('menage', filter=justcoupled and ISFEMALE,
+                                     region_id=choice([0, 1, 2, 3], [0.1, 0.2, 0.3, 0.4]))
+
+                - hh_id: if(justcoupled,
+                            if(ISMALE, 
+                                conj.newhousehold, 
+                                newhousehold),
+                            res)
+
+                - civilstate: if(justcoupled, MARRIED, civilstate)
+                - dur_in_couple: if(justcoupled,
+                                    0,
+                                    if(in_couple, dur_in_couple + 1, 0))
+                - csv(dump(id, age, sexe, conj.id, conj.age,
+                           conj.sexe, res, filter=justcoupled),
+                      suffix='new_couples')
+    
+
+simulation:
+    init: 
+        - menage: [init_region_id]
+        - person: [init_couple]
+    processes:
+        #- person: [age, agegroup, dump_info, show_demography]
+        - person: [ageing, birth, death, marriage]
+        - menage: [household_composition]
+
+    input:
+        file: simple2009.h5
+    output:
+        file: simulTest.h5
+
+    # first simulated period
+    start_period: 2010
+    periods: 3

@@ -163,8 +163,11 @@ pip-log.txt
 .DS_Store
 
 Patrimoine/data*
-person_20*
+person20*
+person_*
+menage20*
 
 *.h5
 Patrimoine\simple2009.h5
 #Patrimoine/*
+
