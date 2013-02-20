@@ -164,7 +164,7 @@ pip-log.txt
 
 Patrimoine/data*
 person20*
-person_*
+person*.csv
 menage20*
 
 *.h5

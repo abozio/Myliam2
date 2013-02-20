@@ -1,0 +1,39 @@
+entities:
+    person:          
+        processes:          
+            birth:  
+                - interm : countlink(children2)
+                - before_max: (countlink(children1)<8) and ((conj.interm) <8)
+                #on pourra retirer cette condition qui était technique avec R.
+                - to_give_birth: logit_regr(0.0,
+                                            filter=ISFEMALE and (age >= 15) and (age <= 50) and before_max,
+                                            align='data\\p_birth.csv')
+                #note bien, on ne selectionne pas les femmes en couple
+                - new('person', filter=to_give_birth,
+                      mere = id,
+                      pere = conj.id,
+                      res = res,
+                      age = 0,
+                      conjoint = 0,
+                      civilstate = SINGLE,
+                      sexe = choice([1,2], [0.512, 0.488])
+                      )               
+                - show('Avg age of "young" mothers', grpavg(age, filter=to_give_birth and ISFEMALE))
+                - show('Avg age of "young" fathers', grpavg(conj.age, filter=to_give_birth and ISFEMALE and ISMARRIED))
+                - show('Avg age of all mothers', grpavg(mater.age, filter=mater.age>-1))  #la condition -1 permet de ne prendre que les vraies meres !
+                - show('Avg age of all fathers', grpavg(pater.age, filter=pater.age>-1 ))  
+                - show('Number of birth', grpcount(age==0))
+              
+            death:
+                - dead: if(ISMALE,
+                           logit_regr(0.0, align='data\\p_dead_m.csv'),
+                           logit_regr(0.0, align='data\\p_dead_f.csv'))
+                #- civilstate: if(partner.dead, WIDOW, civilstate)
+                - show('Avg age of conjoint', grpavg(conj.age, filter=conj.age>-1))
+                - conjoint: if(conj.dead, UNSET, conjoint)
+                - show('Number of male death', grpcount(dead and ISMALE))
+                - show('Number of male death', grpcount(dead and ISFEMALE))
+                - show('Number of male death', grpcount(dead))
+                #- show('Avg age of dead women', grpavg(age, filter=dead and ISFEMALE))
+                #- show('Widows', grpsum(ISWIDOW))
+                - remove(dead)       
