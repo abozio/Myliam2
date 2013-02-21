@@ -35,4 +35,4 @@ simulation:
 
     # first simulated period
     start_period: 2010
-    periods: 10
+    periods: 1

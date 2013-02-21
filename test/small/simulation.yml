@@ -676,7 +676,7 @@ simulation:
 
     processes:
         - person: [
-#                   bp,
+ #                 bp,
                    cleanup,
                    
                    temp_global,
@@ -691,11 +691,11 @@ simulation:
                    test_macro,
                    test_compound, 
                    agegroup,
-                   test_align,
-                   test_logit,
-                   test_log_regr,
+                   # test_align,
+                   # test_logit,
+                   # test_log_regr,
 
-                   [marriage,4],
+                   # [marriage,4],
                    
 #                   test_extra_comma,
                    
@@ -732,7 +732,6 @@ simulation:
     input:
         file: small.h5
     output:
-        path: C:\Users\a.eidelman\Desktop\GenIPP_Pyth\liam\test\small
         file: simulation.h5
 
     random_seed: 0

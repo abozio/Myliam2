@@ -6,6 +6,8 @@ from properties import EvaluableExpression
 
 from utils import loop_wh_progress
 
+from munkres import Munkres, print_matrix
+
 
 class Matching(EvaluableExpression):
     def __init__(self, set1filter, set2filter, score, orderby):
@@ -42,6 +44,7 @@ class Matching(EvaluableExpression):
 
     def evaluate(self, context):
         global local_ctx
+        global cost
 
         ctx_filter = context.get('__filter__')
 
@@ -68,7 +71,6 @@ class Matching(EvaluableExpression):
         set2 = context_subset(context, set2filter, used_variables2)
         orderby = expr_eval(self.orderby, context)
         sorted_set1_indices = orderby[set1filter].argsort()[::-1]
-
         print "matching with %d/%d individuals" % (set1filter.sum(),
                                                    set2filter.sum())
 
@@ -84,7 +86,55 @@ class Matching(EvaluableExpression):
 
         local_ctx = dict(('__other_' + k if k in used_variables2 else k, v)
                          for k, v in set2.iteritems())
+#        print local_ctx
+        test=local_ctx.copy()
+        test.update((k, set1[k]) for k in used_variables1)
 
+
+        # the cost matrix must not be name cost_matrix because that name is used in munkres
+        cost = np.zeros( (1,set2filter.sum()) )
+#        cost = np.array([])
+        
+        def create_cost(idx, sorted_idx):
+
+            global cost
+            if not context_length(local_ctx):
+                raise StopIteration
+            local_ctx.update((k, set1[k][sorted_idx]) for k in used_variables1)
+
+            set2_scores = expr_eval(score_expr, local_ctx)
+#            print cost[(idx-1),:]
+            print set2_scores[:]
+#            cost[(idx-1),:] = set2_scores[:]
+            cost=np.vstack((cost,set2_scores))
+
+#            individual2_idx = np.argmax(set2_scores)
+#
+#            id1 = local_ctx['id']
+#            id2 = local_ctx['__other_id'][individual2_idx]
+
+#            local_ctx = context_delete(local_ctx, individual2_idx)
+#
+#            result[id_to_rownum[id1]] = id2
+#            result[id_to_rownum[id2]] = id1
+        loop_wh_progress(create_cost, sorted_set1_indices)        
+
+        print "l"
+        m = Munkres()
+        indexes = m.compute(cost)
+        print indexes
+#        print_matrix(cost, msg='Lowest cost through this matrix:')
+        total = 0
+
+        print cost[0,9]
+#        for row, column in indexes:
+#            value = cost[row][column]
+#            total += value
+#            print '(%d, %d) -> %d' % (row, column, value)
+#        print 'total cost: %d' % total  
+        for row in range(4):
+            print cost[row]
+             
         def match_one_set1_individual(idx, sorted_idx):
             global local_ctx
 
@@ -92,6 +142,7 @@ class Matching(EvaluableExpression):
                 raise StopIteration
 
             local_ctx.update((k, set1[k][sorted_idx]) for k in used_variables1)
+#            print local_ctx
 
 #            pk = tuple(individual1[fname] for fname in pk_names)
 #            optimized_expr = optimized_exprs.get(pk)
@@ -103,7 +154,7 @@ class Matching(EvaluableExpression):
 #            set2_scores = evaluate(optimized_expr, mm_dict, set2)
 
             set2_scores = expr_eval(score_expr, local_ctx)
-
+#            print set2_scores
             individual2_idx = np.argmax(set2_scores)
 
             id1 = local_ctx['id']

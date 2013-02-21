@@ -1,0 +1,49 @@
+# second entity, links, link methods, init, procedures, local variables,
+# dump's suffix argument, choice
+
+import:
+    menage: menage_genebios.yml
+    person1: person_work.yml
+#    person2: person_life_death.yml
+    person3: person_union_genebios.yml
+    person4: person_youth.yml
+    person5: person_init.yml
+    person6: person_migration.yml
+
+globals:
+    periodic:
+        - WEMRA: int
+        
+entities:
+    person:          
+        processes:          
+            union: 
+                - to_couple2: if(id<100,True,False)
+                - show('Number of birth', grpcount(to_couple2==1))
+                - conjoint: if(to_couple2,
+                                 matching(set1filter=ISFEMALE, set2filter=ISMALE,
+                                          score=- 0.4893 * other.age
+                                                + 0.0131 * other.age ** 2
+                                                - 0.0001 * other.age ** 3
+                                                + 0.0467 * (other.age - age)
+                                                - 0.0189 * (other.age - age) ** 2
+                                                + 0.0003 * (other.age - age) ** 3,
+                                          orderby=id),
+                                 conjoint)
+                - justcoupled: (to_couple2==1) and (conjoint > 0)
+
+
+simulation:
+    processes:
+        #- person: [age, agegroup, dump_info, show_demography , marriage]
+        - person: [union]
+
+
+    input:
+        file: simple2009.h5
+    output:
+        file: simulTest.h5
+
+    # first simulated period
+    start_period: 2010
+    periods: 1

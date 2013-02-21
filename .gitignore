@@ -163,6 +163,7 @@ pip-log.txt
 .DS_Store
 
 Patrimoine/data*
+
 person20*
 person*.csv
 menage20*
@@ -170,4 +171,4 @@ menage20*
 *.h5
 Patrimoine\simple2009.h5
 #Patrimoine/*
-
+test/small*
