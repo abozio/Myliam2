@@ -4,7 +4,7 @@
 rm(list = ls()) # Clean the workspace
 gc()            # Garbage collecting (for memory efficiency)
 
-user <- "AE_port"
+user <- "IFS"
 
 ## AE
 if (user=="AE_port"){
@@ -13,11 +13,13 @@ if (user=="AE_port"){
 if (user=="IPP"){
   chem_patr <-"M:/Patrimoine/EP 2009-10/Stata/"
 }
+if (user=="IFS"){
+  chem_patr <-"T:/data/Patrimoine/EP 2009-10/Stata/"
+}
 
 
-#taille    <- 35729
-#taille.m   <- 15006
-chem_patr <-"M:/data/Patrimoine/EP 2009-10/Stata/"
+taille    <- 35729
+taille.m   <- 15006
 
 library(foreign)
 men   <- read.dta(paste0(chem_patr,"menage.dta"))
@@ -73,31 +75,32 @@ rm(moulinette,list.prob.date,list.prob.deb,chem_patr)
 # (encore que si on a une table de passage...)##
 ind$res <- sprintf("%06d",match(ind$identmen,men$identmen))   #on laisse un zéro devant, toujours pratique 
 men$res <- sprintf("%06d",rep(1:length(unique(men$identmen)))) # en cas de duplication, etc
-ind$id <- paste(ind$identmen,ind$noi)
+ind$id  <- paste(ind$res,ind$noi)
+
+# on introduit idpr et idcj qui sont bien pratiques
+noipr = ind[which(ind$lienpref=="00"),c("id","res")]
+noicj = ind[which(ind$lienpref=="01"),c("id","res")]
+
+men = merge( men,noipr)
+colnames(men)[ncol(men)] <- "idpr"
+men = merge( men,noicj,by="res", all=TRUE)
+colnames(men)[ncol(men)] <- "idcj"
+men[1:5,c("idpr","res","idcj")]
 
 
-#on retire identind qui ne sert à rien, et prodep qu'on a amélioré dans cydeb1 et toutes les variables construite ou inutile
+
+# on retire identind qui ne sert à rien, et prodep qu'on a amélioré dans cydeb1 et toutes les variables construite ou inutile
 ind <- subset(ind, select = - c(prodep,t5age))
 
 attach(men)
 attach(ind) #note bien : l'ordre est important entre les deux attach, on veut que identmen renvoie aux identmen de ind.
 
-########Liste des naissances des enfants ######
+########  Liste des naissances des enfants  ######
 # cette liste n'a pas besoin d'être faite, il faut juste le numéro du père et de la mère que l'on a pour les enfants à
 # domicile, pour les autres, on va faire un matching. 
 
-# information pour matcher avec le père puis avec la mère. 
-
-PER1E==2 #père en vie mais ailleurs
-JEPNAIS;JEPPROF
-PER1E==3 #mère en vie mais ailleurs
-JEMACT, JEMNAIS, JEMPROF
-
-GPARPAT==1 si et seulement si PERE1 ou MERE1 in = 1 ou 2 (on peut raffiner sur les parents non connus...)
-GPARMAT==1 si et seulement si PERE1 ou MERE1 in = 1 ou 2 (on peut raffiner sur les parents non connus...)
 
 JEGRAVE_DIV==1 alors on cherche parmi HODLN=2 ou HODLN=3
-HODSEX; HODSECTxx; HODIP; HODCO
 # stratégie : on match sur la mère (on a plus d'info, si plusieurs mere possible, 
 # on fait que le pere ait été )
 
@@ -127,6 +130,9 @@ for (i in which(enf==1)) {
     parent2[i] <- which(identmen==identmen[i] & lienpref=="01")
   }
 }
+
+
+
 par.enf1 <- function(i) {
   if ( length(identmen==identmen[i] & lienpref=="00")>0) {parent1[i] <- which(identmen==identmen[i] & lienpref=="00")}
   if ( length(which(identmen==identmen[i] & lienpref=="01"))>0){  parent2[i] <- which(identmen==identmen[i] & lienpref=="01") }
@@ -135,11 +141,12 @@ system.time(
   for (i in which(enf==1)) {
     par.enf1(i)
   }
-    )
+)
 
 system.time(
   lapply(which(enf==1),par.enf1)
 )
+
 
 for (i in which(enf==2)) {
   parent1[i] <-  which(identmen==identmen[i] & lienpref=="00")
@@ -182,44 +189,121 @@ for (i in which(lienpref=="21")) {
     }
   }
 }
-  
+
+
+# on fait aussi tourner ce qui suit parce qu'on a besoin du nombre d'enfant
 
 for (i in which(anais<1995)) { #on ne tourne que sur les plus de 14 ans
   # on définit la liste des enfants hors ménage list
   list <- NULL
   if (lienpref[i]=="00") {
     for (k in 1:12) {
-      if (get(paste0("hodln",k))[identmen[i]] %in% c('1','2')) {
-        list <- c(list,get(paste0("hodan",k))[identmen[i]])
+      if (get(paste0("hodln",k))[i] %in% c('1','2')) {
+        list <- c(list,get(paste0("hodan",k))[i])
       }
     }
   }
   if (lienpref[i]=="01") {
     for (k in 1:12) {
-      if (get(paste0("hodln",k))[identmen[i]] %in% c('1','3')) {
-        list <- c(list,get(paste0("hodan",k))[identmen[i]])
+      if (get(paste0("hodln",k))[i] %in% c('1','3')) {
+        list <- c(list,get(paste0("hodan",k))[i])
       }
     }
   }
   
-  #on a tous les éléments pour remplir maintenant la matrice enfant
-  #on prend d'abord les enfants cohabitant
-  l <- union( anais[which(parent1==i)] ,  anais[which(parent2==i)]) #nombre d'enfant cohabitant avec i
-  k <- 0 #place pour mettre l'enfant
-  if ( length(l)>0 ) { 
-    for (k in 1:length(l)) {
-      enfant[i,k] <- l[k]
-    }
+  # on a tous les pour calculer le nombre d enfant
+  # on prend d'abord les enfants cohabitant
+  l <-  union( anais[which(parent1==i)] ,  anais[which(parent2==i)]) #nombre d'enfant cohabitant avec i
+  nb_enf[i] <-  length(l)+length(list)
+  if (length(list)>0) {
+    print(i)
   }
-  #on met ensuite les enfants décohabitant qui sont stocké dans list à partir de k+1, notons que si on n'a pas d'enfant cohabitant alors k==1
-  j  <- 0  # cette initialisation pour avoir le bon nombre d'enfant plus bas, si on ne passe pas par la boucle juste en dessous
-  if (length(list)>0 ) {
-    for (j in (k+1):(k+length(list))) {
-      enfant[i,j] <- list[j-k]
-    }
-  }
-  nb_enf[i] <- j
 }
+  
+
+# recuperation des variables sur les enfants hors du domicile
+# comme on aura besoin des infos, il faut aller les chercher
+
+
+inf_pr = ind[which(ind$lienpref=="00"),c("id","res","anais","per1e","mer1e","cs42")]
+inf_cj = ind[which(ind$lienpref=="01"),c("id","res","anais","per1e","mer1e","cs42")]
+inf_pr$gparpr = 2-( inf_pr$per1e %in% c("1","2") | inf_pr$mer1e %in% c("1","2") ) 
+inf_cj$gparcj = 2-( inf_cj$per1e %in% c("1","2") | inf_cj$mer1e %in% c("1","2") )
+
+men = merge( men,inf_pr)
+colnames(men)[ncol(men)] <- "idpr"
+men = merge( men,inf_cj,by="res", all=TRUE)
+colnames(men)[ncol(men)] <- "idcj"
+men[1:5,c("idpr","res","idcj")]
+
+PER1E==2 #père en vie mais ailleurs
+JEPNAIS;JEPPROF
+PER1E==3 #mère en vie mais ailleurs
+JEMACT, JEMNAIS, JEMPROF
+
+GPARPAT==1 si et seulement si PERE1 ou MERE1 in = 1 ou 2 (on peut raffiner sur les parents non connus...)
+GPARMAT==1 si et seulement si PERE1 ou MERE1 in = 1 ou 2 (on peut raffiner sur les parents non connus...)
+
+
+#TODO: gerer les valeurs manquante
+#TODO: s'occuper de la precision sur les statuts
+#TODO: prendre les infos utiles sur les parents
+save_inf <- function(i){
+  liste = which(men[,paste0("hodln",i)] !="")
+
+  sexe <<- character(length(liste))
+  # info sur l'enfant
+  sexe   <<- men[liste,paste0("hodsex",i)]
+  anais  = men[liste,paste0("hodan",i)]
+  couple = men[liste,paste0("hodco",i)] #couple=1 et couple=2 devront etre groupes en couple=1
+  couple[which(couple=="2")]<-"3"
+  dip6   = men[liste,paste0("hodip",i)]
+  nb_enf = men[liste,paste0("hodenf",i)]
+  # son activite
+  situa=  1*(men[liste,paste0("hodemp",i)]==1)
+        + 2*(men[liste,paste0("hodcho",i)]==3)
+        + 3*(men[liste,paste0("hodcho",i)]==3)
+        + 4*(men[liste,paste0("hodcho",i)]==1)
+        + 5*(men[liste,paste0("hodemp",i)]==2)
+        + 6*(men[liste,paste0("hodcho",i)]==2)
+        + 7*(men[liste,paste0("hodcho",i)]==4)
+ # on verifie que hodcho est rempli seulement quand 
+ # hodemp=3
+  
+#  hodind=substr(acti,1,1)
+#   if (hodind==4 & statut!=6) {hodind=5}
+  
+  # info sur les parents
+  mere <- character(length(liste))
+  pere <- character(length(liste))  
+  pere[which(men$sexepr[liste]==1 & men[liste,paste0("hodln",i)]=="1") ] <- men[liste[which(men$sexepr[liste]==1 & men[liste,paste0("hodln",i)]=="1")],"idpr" ]
+  mere[which(men$sexepr[liste]==1 & men[liste,paste0("hodln",i)]=="1") ] <- men[liste[which(men$sexepr[liste]==1 & men[liste,paste0("hodln",i)]=="1")],"idcj" ]
+  pere[which(men$sexepr[liste]==2 & men[liste,paste0("hodln",i)]=="1") ] <- men[liste[which(men$sexepr[liste]==2 & men[liste,paste0("hodln",i)]=="1")],"idcj" ]
+  mere[which(men$sexepr[liste]==2 & men[liste,paste0("hodln",i)]=="1") ] <- men[liste[which(men$sexepr[liste]==2 & men[liste,paste0("hodln",i)]=="1")],"idpr" ] 
+  pere[which(men$sexepr[liste]==1 & men[liste,paste0("hodln",i)]=="2") ] <- men[liste[which(men$sexepr[liste]==1 & men[liste,paste0("hodln",i)]=="2")],"idpr" ]
+  mere[which(men$sexepr[liste]==2 & men[liste,paste0("hodln",i)]=="2") ] <- men[liste[which(men$sexepr[liste]==2 & men[liste,paste0("hodln",i)]=="2")],"idpr" ]
+  pere[which(men$sexecj[liste]==1 & men[liste,paste0("hodln",i)]=="3") ] <- men[liste[which(men$sexecj[liste]==1 & men[liste,paste0("hodln",i)]=="3")],"idcj" ]
+  mere[which(men$sexecj[liste]==2 & men[liste,paste0("hodln",i)]=="3") ] <- men[liste[which(men$sexecj[liste]==2 & men[liste,paste0("hodln",i)]=="3")],"idcj" ]
+
+  print(length(liste))
+  ajout <<- cbind(sexe,anais,couple,dip6,nb_enf,situa,pere,mere)
+}
+
+save_inf(1)
+enf_ailleurs <- ajout
+for (k in 2:12) {
+  save_inf(k)
+  enf_ailleurs <- rbind(enf_ailleurs,ajout)
+}
+
+for (men in which(hodln1 !="") ) {
+  if (hodln1=="1") {
+    pr=
+
+  }
+}
+
+
 
 
 # hist(enfant[which(enfant>0 & enfant<2000)],100)

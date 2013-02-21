@@ -7,8 +7,9 @@ import main #je laisse le main parce que je ne veux pas travailler sur le import
 from simulation import Simulation
 
 chemin = 'C:\\Users\\a.eidelman\\Desktop\\GenIPP_Pyth\\liam\\'
-chemin = 'T:\\Myliam2\\'
 chemin = 'M:\\Myliam2\\'
+chemin = 'T:\\Myliam2\\'
+
 print chemin
 #import
 sys.argv.append('import')
@@ -26,8 +27,9 @@ fichier=chemin+'test\\examples\\demo01.yml'
 ## ici tourne Simulation.from_yaml et éventuellement Simulation.interactive
 fichier= chemin+'Genebios\\console_genebios.yml'
 fichier= chemin+'Genebios\\vieillissement_genebios.yml'
-fichier= chemin+'Genebios\\console_genebios.yml'
 fichier= chemin+'Genebios\\console_test_marriage.yml'
+fichier= chemin+'Genebios\\console_genebios.yml'
+
 # fichier= chemin+'test\\small\\simulation.yml'
 
 #simulation= Simulation.from_yaml(fichier,

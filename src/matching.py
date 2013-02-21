@@ -87,53 +87,64 @@ class Matching(EvaluableExpression):
         local_ctx = dict(('__other_' + k if k in used_variables2 else k, v)
                          for k, v in set2.iteritems())
 #        print local_ctx
-        test=local_ctx.copy()
-        test.update((k, set1[k]) for k in used_variables1)
-
-
-        # the cost matrix must not be name cost_matrix because that name is used in munkres
-        cost = np.zeros( (1,set2filter.sum()) )
-#        cost = np.array([])
-        
-        def create_cost(idx, sorted_idx):
-
-            global cost
-            if not context_length(local_ctx):
-                raise StopIteration
-            local_ctx.update((k, set1[k][sorted_idx]) for k in used_variables1)
-
-            set2_scores = expr_eval(score_expr, local_ctx)
-#            print cost[(idx-1),:]
-            print set2_scores[:]
-#            cost[(idx-1),:] = set2_scores[:]
-            cost=np.vstack((cost,set2_scores))
-
-#            individual2_idx = np.argmax(set2_scores)
+#        test=local_ctx.copy()
+#        test.update((k, set1[k]) for k in used_variables1)
 #
-#            id1 = local_ctx['id']
-#            id2 = local_ctx['__other_id'][individual2_idx]
-
-#            local_ctx = context_delete(local_ctx, individual2_idx)
 #
-#            result[id_to_rownum[id1]] = id2
-#            result[id_to_rownum[id2]] = id1
-        loop_wh_progress(create_cost, sorted_set1_indices)        
-
-        print "l"
-        m = Munkres()
-        indexes = m.compute(cost)
-        print indexes
-#        print_matrix(cost, msg='Lowest cost through this matrix:')
-        total = 0
-
-        print cost[0,9]
+#        # we want a squre matrix
+#        dim = max(set2filter.sum(),set2filter.sum())
+#        cost = np.zeros((dim, dim) )
+##        cost = np.array([])
+#        
+#        def create_cost(idx, sorted_idx):
+#
+#            global cost
+#            if not context_length(local_ctx):
+#                raise StopIteration
+#            local_ctx.update((k, set1[k][sorted_idx]) for k in used_variables1)
+#
+#            set2_scores = expr_eval(score_expr, local_ctx)
+##            print cost[(idx-1),:]
+##            print set2_scores[:]
+#            print "min max"
+#            print local_ctx
+#            print score_expr
+#            print set2_scores
+#            print max(set2_scores),min(set2_scores)
+#            print cost
+#            cost[(idx-1),:dim] = set2_scores[:]
+#
+##            cost=np.vstack((cost,set2_scores))
+#
+##            individual2_idx = np.argmax(set2_scores)
+##
+##            id1 = local_ctx['id']
+##            id2 = local_ctx['__other_id'][individual2_idx]
+#
+##            local_ctx = context_delete(local_ctx, individual2_idx)
+##
+##            result[id_to_rownum[id1]] = id2
+##            result[id_to_rownum[id2]] = id1
+#
+#        loop_wh_progress(create_cost, sorted_set1_indices)  
+##        cost=cost.transpose()  
+#            
+#
+#        print "avant"
+#        for row in range(4):
+#            print cost[row]
+#        m = Munkres()
+#        indexes = m.compute(cost)
+##        print_matrix(cost, msg='Lowest cost through this matrix:')
+#        total = 0
 #        for row, column in indexes:
 #            value = cost[row][column]
 #            total += value
 #            print '(%d, %d) -> %d' % (row, column, value)
-#        print 'total cost: %d' % total  
-        for row in range(4):
-            print cost[row]
+#        print 'total cost: %d' % total 
+#        print "apres" 
+#        for row in range(4):
+#            print cost[row]
              
         def match_one_set1_individual(idx, sorted_idx):
             global local_ctx
