@@ -15,6 +15,7 @@ if (user=="IPP"){
 }
 if (user=="IFS"){
   chem_patr <-"T:/data/Patrimoine/EP 2009-10/Stata/"
+  dest <-"T:/Myliam2/Patrimoine/"
 }
 
 
@@ -64,7 +65,7 @@ list.prob.deb <- which(ind$cydeb1>ind$cydeb2)
 ind$cydeb1[list.prob.deb]  <- pmin(ind$anfinetu[list.prob.deb],ind$jeactif[list.prob.deb])
 ind$cydeb1[which(ind$cyact1=="")] <- NA
 
-rm(moulinette,list.prob.date,list.prob.deb,chem_patr)
+rm(moulinette,list.prob.date,list.prob.deb)
 
 
 
@@ -77,20 +78,21 @@ ind$res <- sprintf("%06d",match(ind$identmen,men$identmen))   #on laisse un zéro
 men$res <- sprintf("%06d",rep(1:length(unique(men$identmen)))) # en cas de duplication, etc
 ind$id  <- paste(ind$res,ind$noi)
 
-# on introduit idpr et idcj qui sont bien pratiques
-noipr = ind[which(ind$lienpref=="00"),c("id","res")]
-noicj = ind[which(ind$lienpref=="01"),c("id","res")]
-
-men = merge( men,noipr)
-colnames(men)[ncol(men)] <- "idpr"
-men = merge( men,noicj,by="res", all=TRUE)
-colnames(men)[ncol(men)] <- "idcj"
-men[1:5,c("idpr","res","idcj")]
-
 
 
 # on retire identind qui ne sert à rien, et prodep qu'on a amélioré dans cydeb1 et toutes les variables construite ou inutile
 ind <- subset(ind, select = - c(prodep,t5age))
+# on retire aussi toute les variables concernant pr et cj puisqu'on peut
+# recuperer celle qu'on veut plus tard
+names(men)
+grep("^pr", names(men))
+ToRemove = names(men)[grep("pr$", names(men))] 
+ToRemove <- ToRemove[which(! ToRemove %in% c("indepr","r_dcpr","r_detpr"))]
+ToRemove = c(ToRemove, names(men)[grep("cj$", names(men))] )
+men = subset(men, select= names(men)[which(! names(men) %in% ToRemove)] )
+# dans la meme veine, on retire les variables diplomes
+ToRemove = names(men)[grep("^diplom", names(men))] 
+men = subset(men, select= names(men)[which(! names(men) %in% ToRemove)] )
 
 attach(men)
 attach(ind) #note bien : l'ordre est important entre les deux attach, on veut que identmen renvoie aux identmen de ind.
@@ -100,9 +102,7 @@ attach(ind) #note bien : l'ordre est important entre les deux attach, on veut qu
 # domicile, pour les autres, on va faire un matching. 
 
 
-JEGRAVE_DIV==1 alors on cherche parmi HODLN=2 ou HODLN=3
-# stratégie : on match sur la mère (on a plus d'info, si plusieurs mere possible, 
-# on fait que le pere ait été )
+
 
 
 
@@ -137,15 +137,10 @@ par.enf1 <- function(i) {
   if ( length(identmen==identmen[i] & lienpref=="00")>0) {parent1[i] <- which(identmen==identmen[i] & lienpref=="00")}
   if ( length(which(identmen==identmen[i] & lienpref=="01"))>0){  parent2[i] <- which(identmen==identmen[i] & lienpref=="01") }
 }
-system.time(
-  for (i in which(enf==1)) {
-    par.enf1(i)
-  }
-)
 
-system.time(
-  lapply(which(enf==1),par.enf1)
-)
+for (i in which(enf==1)) {
+  par.enf1(i)
+}
 
 
 for (i in which(enf==2)) {
@@ -216,7 +211,6 @@ for (i in which(anais<1995)) { #on ne tourne que sur les plus de 14 ans
   l <-  union( anais[which(parent1==i)] ,  anais[which(parent2==i)]) #nombre d'enfant cohabitant avec i
   nb_enf[i] <-  length(l)+length(list)
   if (length(list)>0) {
-    print(i)
   }
 }
   
@@ -225,83 +219,163 @@ for (i in which(anais<1995)) { #on ne tourne que sur les plus de 14 ans
 # comme on aura besoin des infos, il faut aller les chercher
 
 
-inf_pr = ind[which(ind$lienpref=="00"),c("id","res","anais","per1e","mer1e","cs42")]
-inf_cj = ind[which(ind$lienpref=="01"),c("id","res","anais","per1e","mer1e","cs42")]
-inf_pr$gparpr = 2-( inf_pr$per1e %in% c("1","2") | inf_pr$mer1e %in% c("1","2") ) 
-inf_cj$gparcj = 2-( inf_cj$per1e %in% c("1","2") | inf_cj$mer1e %in% c("1","2") )
+inf_pr = ind[which(ind$lienpref=="00"),c("id","res","sexe","anais","per1e","mer1e","cs42")]
+inf_cj = ind[which(ind$lienpref=="01"),c("id","res","sexe","anais","per1e","mer1e","cs42")]
+inf_pr$gpar = 2-( inf_pr$per1e %in% c("1","2") | inf_pr$mer1e %in% c("1","2") ) 
+inf_cj$gpar = 2-( inf_cj$per1e %in% c("1","2") | inf_cj$mer1e %in% c("1","2") )
+inf_pr = subset(inf_pr, select= c("id","res","sexe","anais","gpar","cs42"))
+inf_cj = subset(inf_cj, select= c("id","res","sexe","anais","gpar","cs42"))
+colnames(inf_pr) <- paste0(colnames(inf_pr),"pr")
+colnames(inf_cj) <- paste0(colnames(inf_cj),"cj")
 
-men = merge( men,inf_pr)
-colnames(men)[ncol(men)] <- "idpr"
-men = merge( men,inf_cj,by="res", all=TRUE)
-colnames(men)[ncol(men)] <- "idcj"
-men[1:5,c("idpr","res","idcj")]
+men = merge( men,inf_pr,by.x="res",by.y="respr")
+men = merge( men,inf_cj,by.x="res",by.y="rescj",all=TRUE)
 
-PER1E==2 #père en vie mais ailleurs
-JEPNAIS;JEPPROF
-PER1E==3 #mère en vie mais ailleurs
-JEMACT, JEMNAIS, JEMPROF
+rm(inf_pr,inf_cj)
 
-GPARPAT==1 si et seulement si PERE1 ou MERE1 in = 1 ou 2 (on peut raffiner sur les parents non connus...)
-GPARMAT==1 si et seulement si PERE1 ou MERE1 in = 1 ou 2 (on peut raffiner sur les parents non connus...)
 
 
 #TODO: gerer les valeurs manquante
 #TODO: s'occuper de la precision sur les statuts
-#TODO: prendre les infos utiles sur les parents
 save_inf <- function(i){
-  liste = which(men[,paste0("hodln",i)] !="")
-
-  sexe <<- character(length(liste))
+  liste  <<- which(men[,paste0("hodln",i)] !="")
+  
+  hodln <- men[liste,paste0("hodln",i)]
+  sexe <- character(length(liste))
   # info sur l'enfant
-  sexe   <<- men[liste,paste0("hodsex",i)]
+  sexe   <- men[liste,paste0("hodsex",i)]
   anais  = men[liste,paste0("hodan",i)]
   couple = men[liste,paste0("hodco",i)] #couple=1 et couple=2 devront etre groupes en couple=1
   couple[which(couple=="2")]<-"3"
   dip6   = men[liste,paste0("hodip",i)]
   nb_enf = men[liste,paste0("hodenf",i)]
   # son activite
-  situa=  1*(men[liste,paste0("hodemp",i)]==1)
-        + 2*(men[liste,paste0("hodcho",i)]==3)
-        + 3*(men[liste,paste0("hodcho",i)]==3)
-        + 4*(men[liste,paste0("hodcho",i)]==1)
-        + 5*(men[liste,paste0("hodemp",i)]==2)
-        + 6*(men[liste,paste0("hodcho",i)]==2)
-        + 7*(men[liste,paste0("hodcho",i)]==4)
- # on verifie que hodcho est rempli seulement quand 
- # hodemp=3
-  
-#  hodind=substr(acti,1,1)
-#   if (hodind==4 & statut!=6) {hodind=5}
+  situa=  1*(men[liste,paste0("hodemp",i)]==1) +
+         2*(men[liste,paste0("hodcho",i)]==3) +
+         3*(men[liste,paste0("hodcho",i)]==3) +
+         4*(men[liste,paste0("hodcho",i)]==1) +
+         5*(men[liste,paste0("hodemp",i)]==2) +
+         6*(men[liste,paste0("hodcho",i)]==2) +
+         7*(men[liste,paste0("hodcho",i)]==4)
+ # on verifie que hodcho est rempli seulement quand hodemp=3
+  classif = ifelse( men[liste,paste0("hodpri",i)] %in% c("1","2","3","4"), 
+                    men[liste,paste0("hodpri",i)],  
+                    men[liste,paste0("hodniv",i)])
+
   
   # info sur les parents
-  mere <- character(length(liste))
-  pere <- character(length(liste))  
-  pere[which(men$sexepr[liste]==1 & men[liste,paste0("hodln",i)]=="1") ] <- men[liste[which(men$sexepr[liste]==1 & men[liste,paste0("hodln",i)]=="1")],"idpr" ]
-  mere[which(men$sexepr[liste]==1 & men[liste,paste0("hodln",i)]=="1") ] <- men[liste[which(men$sexepr[liste]==1 & men[liste,paste0("hodln",i)]=="1")],"idcj" ]
-  pere[which(men$sexepr[liste]==2 & men[liste,paste0("hodln",i)]=="1") ] <- men[liste[which(men$sexepr[liste]==2 & men[liste,paste0("hodln",i)]=="1")],"idcj" ]
-  mere[which(men$sexepr[liste]==2 & men[liste,paste0("hodln",i)]=="1") ] <- men[liste[which(men$sexepr[liste]==2 & men[liste,paste0("hodln",i)]=="1")],"idpr" ] 
-  pere[which(men$sexepr[liste]==1 & men[liste,paste0("hodln",i)]=="2") ] <- men[liste[which(men$sexepr[liste]==1 & men[liste,paste0("hodln",i)]=="2")],"idpr" ]
-  mere[which(men$sexepr[liste]==2 & men[liste,paste0("hodln",i)]=="2") ] <- men[liste[which(men$sexepr[liste]==2 & men[liste,paste0("hodln",i)]=="2")],"idpr" ]
-  pere[which(men$sexecj[liste]==1 & men[liste,paste0("hodln",i)]=="3") ] <- men[liste[which(men$sexecj[liste]==1 & men[liste,paste0("hodln",i)]=="3")],"idcj" ]
-  mere[which(men$sexecj[liste]==2 & men[liste,paste0("hodln",i)]=="3") ] <- men[liste[which(men$sexecj[liste]==2 & men[liste,paste0("hodln",i)]=="3")],"idcj" ]
+  info_mere    <- matrix("",length(liste),5)
+  info_pere    <- matrix("",length(liste),4)
+  colnames(info_mere) <- c("mere","jemnais","gparmat","jemprof","jemact")
+  colnames(info_pere) <- c("pere","jepnais","gparpat","jepprof")
+  
+  inf_pere <- function(enfants,pers) {
+    if (pers == "pr") {
+      info_pere[enfants,] <<- as.matrix(men[liste[enfants],c("idpr","anaispr","gparpr","cs42pr")])
+    }
+    if (pers == "cj") {
+      info_pere[enfants,] <<- as.matrix(men[liste[enfants],c("idcj","anaiscj","gparcj","cs42cj")])
+    }
+  }
+  inf_mere <- function(enfants,pers) {
+    if (pers == "pr") {
+      info_mere[enfants,1:4] <<- as.matrix(men[liste[enfants],c("idpr","anaispr","gparpr","cs42pr")])
+    }
+    if (pers == "cj") {
+      info_mere[enfants,1:4] <<- as.matrix(men[liste[enfants],c("idcj","anaiscj","gparcj","cs42cj")])
+    }
+  }
+  
+  inf_pere( which(men$sexepr[liste]==1 & men[liste,paste0("hodln",i)]=="1"), "pr")
+  inf_mere( which(men$sexepr[liste]==1 & men[liste,paste0("hodln",i)]=="1"), "cj")
+  inf_pere( which(men$sexepr[liste]==2 & men[liste,paste0("hodln",i)]=="1"), "cj")
+  inf_mere( which(men$sexepr[liste]==2 & men[liste,paste0("hodln",i)]=="1"), "pr")
+  inf_pere( which(men$sexepr[liste]==1 & men[liste,paste0("hodln",i)]=="2"), "pr")
+  inf_mere( which(men$sexepr[liste]==2 & men[liste,paste0("hodln",i)]=="2"), "pr")
+  inf_pere( which(men$sexepr[liste]==1 & men[liste,paste0("hodln",i)]=="3"), "cj")
+  inf_mere( which(men$sexepr[liste]==2 & men[liste,paste0("hodln",i)]=="3"), "cj")
 
   print(length(liste))
-  ajout <<- cbind(sexe,anais,couple,dip6,nb_enf,situa,pere,mere)
+  to_match = rep.int(1,length(liste))
+  ajout <- cbind(sexe,anais,couple,dip6,nb_enf,situa,classif,info_pere,info_mere, to_match,hodln)
 }
 
-save_inf(1)
-enf_ailleurs <- ajout
+enf_ailleurs <- save_inf(1)
 for (k in 2:12) {
-  save_inf(k)
-  enf_ailleurs <- rbind(enf_ailleurs,ajout)
+  enf_ailleurs <- rbind(enf_ailleurs,save_inf(k))
 }
 
-for (men in which(hodln1 !="") ) {
-  if (hodln1=="1") {
-    pr=
 
-  }
-}
+
+
+
+# on peut maintenant retirer toutes les variables concernant les enfants a l exterieur du menage
+ToRemove = names(men)[grep("^hod", names(men))] 
+men = subset(men, select= names(men)[which(! names(men) %in% ToRemove)] )
+
+
+
+#### info sur les parents
+cherche_parent <- as.matrix(subset(ind, per1e == "2" | mer1e == "2", 
+                         select= c(id,sexe,anais,couple,dip14,situa,jemnais,gparmat,jemprof,jemact,
+                                   jepnais,gparpat,jepprof,per1e,mer1e,jegrave_div,classif)))
+
+# on supprime les infos quand on ne cherche pas ce parent
+pas_pere <- which(cherche_parent[,"per1e"] %in% c("1","3","4") )
+cherche_parent[pas_pere,c("jepnais","gparpat","jepprof")] <- NA
+pas_mere <- which(cherche_parent[,"mer1e"] %in% c("1","3","4") )
+cherche_parent[pas_mere,c("jemnais","gparmat","jemprof","jemact")] <- NA
+rm(pas_pere,pas_mere)
+
+#  hodind=substr(acti,1,1)
+#   if (hodind==4 & statut!=6) {hodind=5}
+
+dip6 = character(nrow(cherche_parent))
+dip6[] <- "6"
+dip6[which(cherche_parent[,"dip14"]>=30)]  <- "5"
+dip6[which(cherche_parent[,"dip14"]>=41)]  <- "4"
+dip6[which(cherche_parent[,"dip14"]>=43)]  <- "3"
+dip6[which(cherche_parent[,"dip14"]>=50)]  <- "2"
+dip6[which(cherche_parent[,"dip14"]>=60)]  <- "1"
+to_match = rep.int(0,nrow(cherche_parent))
+
+cherche_parent[which(cherche_parent[,"classif"] %in% c("1","2","3")),"classif"] <- "a"
+cherche_parent[which(cherche_parent[,"classif"] %in% c("4","5")),"classif"] <- "2"
+cherche_parent[which(cherche_parent[,"classif"] %in% c("6","7")),"classif"] <- "1"
+cherche_parent[which(cherche_parent[,"classif"] %in% c("8","9")),"classif"] <- "3"
+cherche_parent[which(cherche_parent[,"classif"] %in% c("a")),"classif"] <- "4"
+
+cherche_parent <- subset(cherche_parent,select=-c(dip14))
+cherche_parent <- cbind(cherche_parent,dip6,to_match,nb_enf[which(per1e == "2" | mer1e == "2")])
+colnames(cherche_parent)[which(colnames(cherche_parent)=="")] <- "nb_enf" 
+
+library(plyr)
+
+lien = rbind.fill.matrix(cherche_parent,enf_ailleurs)
+lien[16025:16100,]
+
+f  <- paste0(dest,"lien.h5")
+write.csv(lien,file=f)
+
+
+# il n'y a plus qu'a faire ce matching....
+
+#JEGRAVE_DIV==1 alors on cherche parmi HODLN=2 ou HODLN=3
+
+# pour l'instant, on laisse de cote la profession des parents qui de toute facon ne colle pas parce que c'est dans
+# la jeunesse de l'individu
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
