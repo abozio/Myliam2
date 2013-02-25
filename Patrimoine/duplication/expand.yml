@@ -4,71 +4,67 @@ entities:
             # period and id are implicit
             - pond:        float
             - pondfin:     {type: float, initialdata: false}
-
+            - toclone:     {type: bool, initialdata: false}
+            - clone_id : {type: int, initialdata: false}
+            
         links:
             persons: {type: one2many, target: person, field: res}
 
         processes:
 
-            rien: 0 
+            rien: 
+                - show('empty menages:', grpsum(toclone))
             check:
-                - show('empty menageholds:', grpsum(countlink(persons) == 0))
+                - show('empty menages:', grpsum(countlink(persons) == 0))
 
             expand:
                 - minpond: grpmin(pond)
                 # - show('la plus petite ponderation est:' grpmin(minpond))
                 - last_non_clone_id: grpmax(id)
                 - toclone: pond > 2*minpond
-                # clone all menageholds with a weight > 1
+                # clone all menages with a weight > 1
                 - clone_id: clone(toclone)
                 
                 # modify the weight:
-                # for the original menageholds: (weight + 1) / 2
-                # for the new (cloned) menagehold: weight / 2
+                # for the original menages: (weight + 1) / 2
+                # for the new (cloned) menage: weight / 2
                 - is_clone: id > last_non_clone_id
                 - pondfin: if(toclone,
                              pond/2,
                              pond)
                 - pondfin: if(id>last_non_clone_id,
-                             pond/2,
-                             pond)                           
-                                
+                             pondfin/2,
+                             pondfin)                           
+                               
     person:
         fields:
-            # period and id are implicit
             - age:    int
             - sexe:   int
             - res:    int
             - pere:   int
             - mere:   int
             - conjoint: int
-            
-            # # [add all other fields here]
-            
-            # # original weight
-            # - weight:     float
-            # # frequency weight (int)
-            # - fweight:    {type: int, initialdata: false}
-            
-            # # links
-            # - f_id:       int
-            # - m_id:       int
-            # - partner_id: int
-            # - hh_id:      int
+            - clone_id : {type: int, initialdata: false}
+  
+         
+        links:
+            menage:     {type: many2one, target: menage, field: res}
+            mater:      {type: many2one, target: person, field: mere}
+            pater:      {type: many2one, target: person, field: pere}
+            conj:       {type: many2one, target: person, field: conjoint}
+            children1:  {type: one2many, target: person, field: mere}
+            children2:  {type: one2many, target: person, field: pere}
+            duplic:     {type: many2one, target: person, field: clone_id}
 
-        # links:
-            # mother: {type: many2one, target: person, field: m_id}
-            # partner: {type: many2one, target: person, field: partner_id}
-            # menagehold: {type: many2one, target: menagehold, field: hh_id}
-            # father: {type: many2one, target: person, field: f_id}
-
-        # processes:
+        processes:
+        
+            rien: 0
             # check:
                 # - show('total population:', grpsum(fweight))
                 # - show('min/max weight:', grpmin(fweight), grpmax(fweight))
-                # - show('menagehold weight problems:',
-                       # grpcount((hh_id != -1) and (menagehold.weight != fweight)))
-                # - show('menagehold weight -1 problems:',
+                # - show('menage weight problems:',
+                       # grpcount((hh_id != -1) and (menage.weight != fweight)))
+                # - show('menage weight -1 problems:',
                        # grpcount((hh_id == -1)))
                 # - show('partner weight problems:',
                        # grpcount((partner_id != -1) and (partner.fweight != fweight)))
@@ -89,23 +85,20 @@ entities:
                 # - show(groupby(agegroup, gender, expr=grpsum(fweight)))
                 # - show(groupby(agegroup, gender, expr=grpsum(fweight), percent=True))
 
-            # expand:
-                # - last_non_clone_id: grpmax(id)
-                # - toclone: fweight > 1
-                # - clone_id: clone(toclone)
+            expand:
+                - last_non_clone_id: grpmax(id)
+                - toclone: menage.toclone
+                - clone_id: clone(toclone)
 
-                # - is_clone: id > last_non_clone_id
+                - is_clone: id > last_non_clone_id
 
-                # - fweight: if(toclone,
-                              # trunc((fweight + 1) / 2),
-                              # if(is_clone,
-                                 # trunc(fweight / 2),
-                                 # 1))
 
-                # - hh_id: if(is_clone, menagehold.clone_id, hh_id)
-                # - m_id: if(is_clone, mother.clone_id, m_id)
-                # - partner_id: if(is_clone, partner.clone_id, partner_id)
-                # - f_id: if(is_clone, father.clone_id, f_id)
+
+                - res: if(is_clone, menage.clone_id, res)
+                - mere: if(is_clone, mater.clone_id, mere)
+                - pere: if(is_clone, pater.clone_id, pere)
+                - conjoint: if(is_clone, conj.clone_id, conjoint)
+                - duplic.clone_id : 0       
 
 simulation:
     init:
@@ -115,38 +108,38 @@ simulation:
         # - person: [check]
 
         # # pass 1: weight up to 2
-        # - menagehold: [expand]
-        # - person: [expand]
+        # - menage: [expand]
+        - person: [expand]
         # # pass 2: weights up to 4
-        # - menagehold: [expand]
+        # - menage: [expand]
         # - person: [expand]
         # # pass 3: weights up to 8
-        # - menagehold: [expand]
+        # - menage: [expand]
         # - person: [expand]
         # # pass 4: weights up to 16
-        # - menagehold: [expand]
+        # - menage: [expand]
         # - person: [expand]
         # # pass 5: weights up to 32
-        # - menagehold: [expand]
+        # - menage: [expand]
         # - person: [expand]
         # # pass 6: weights up to 64
-        # - menagehold: [expand]
+        # - menage: [expand]
         # - person: [expand]
         # # pass 7: weights up to 128
-        # - menagehold: [expand]
+        # - menage: [expand]
         # - person: [expand]
 
         # # checks
-        # - menagehold: [weight, check]
+        # - menage: [weight, check]
         # - person: [check]
     processes:
         - menage: [rien]
-      
+        - person: [rien]   
     input:
-        file: "simple2009.h5"
+        file: simple2009.h5
 
     output:
-        file: "data_expanded.h5"
+        file: data_expanded.h5
 
     start_period: 2010   # first simulated period
     periods: 0

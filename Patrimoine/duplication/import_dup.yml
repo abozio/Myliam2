@@ -1,7 +1,7 @@
 # this is an "import" file. To use it press F5 in liam2 environment, or run
 # the following command in a console: 
 # INSTALL PATH\liam2 import demo_import.yml
-output: T:\Myliam2\Patrimoine\duplication\simple2009.h5
+output: M:\Myliam2\Patrimoine\duplication\simple2009.h5
 
 #globals:
 #    periodic:
@@ -10,7 +10,7 @@ output: T:\Myliam2\Patrimoine\duplication\simple2009.h5
 
 entities:
     person:
-        path: T:\Myliam2\Patrimoine\data\person2009.csv
+        path: M:\Myliam2\Patrimoine\data\person2009.csv
         fields:
             - conjoint: int
             - salaires: float
@@ -21,7 +21,7 @@ entities:
             - pere: int
             - mere: int
         files: 
-            - "T:\\Myliam2\\Patrimoine\\data\\person2009.csv"
+            - "M:\\Myliam2\\Patrimoine\\data\\person2009.csv"
             #- data\person.csv 
            
         # if you want to invert the value of some boolean fields (True -> False
@@ -29,6 +29,6 @@ entities:
 #        invert: [list, of, boolean, fields, to, invert]
 
     menage: 
-        path: T:\Myliam2\Patrimoine\data\menage2009.csv
+        path: M:\Myliam2\Patrimoine\data\menage2009.csv
 
 

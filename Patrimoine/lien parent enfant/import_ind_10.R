@@ -4,11 +4,12 @@
 rm(list = ls()) # Clean the workspace
 gc()            # Garbage collecting (for memory efficiency)
 
-user <- "IFS"
+user <- "AE_port"
 
 ## AE
 if (user=="AE_port"){
   chem_patr <-"M:/data/Patrimoine/EP 2009-10/Stata/"
+  dest <-"M:/Myliam2/Patrimoine/"
 }
 if (user=="IPP"){
   chem_patr <-"M:/Patrimoine/EP 2009-10/Stata/"

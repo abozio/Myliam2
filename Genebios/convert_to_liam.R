@@ -91,9 +91,10 @@ person2009$res[which(person2009$conjoint < person2009$id & person2009$conjoint >
 person2009$res[which(person2009$mere>0 & person2009$conjoint<0 & person2009$age <25)]<-person2009$res[person2009$mere[which(person2009$mere>0 & person2009$conjoint<0  & person2009$age <25)]]
 #et puisqu'on est là, on écrit aussi un table menage dont on a besoin : 
 
-men <- as.matrix(unique(person2009$res))
-men <- cbind(men,rep.int(2009,nrow(men)))
-colnames(men) <- c("id","period")
+men  <- as.matrix(unique(person2009$res))
+pond <- runif(nrow(men))*20000+50 
+men  <- cbind(men,rep.int(2009,nrow(men)))
+colnames(men) <- c("id","period","pond")
 write.csv(men,file="menage2009.csv",row.names=F)
 write.csv(person2009,file="person2009.csv",row.names=F)
 
