@@ -11,7 +11,7 @@ from expr import Expr, Variable, Where, as_string, dtype, \
 from context import EntityContext, context_length, context_subset
 from registry import entity_registry
 import utils
-
+import pdb 
 
 class BreakpointException(Exception):
     pass
@@ -882,11 +882,23 @@ def add_individuals(target_context, children):
 #TODO: inherit from FilteredExpression
 #TODO: allow number to be an expression
 class CreateIndividual(EvaluableExpression):
-    def __init__(self, entity_name=None, filter=None, number=None, **kwargs):
+    def __init__(self, entity_name=None, filter=None, number=None,
+                 num_duplicate=None,return_option=None,expand=None, **kwargs):
         self.entity_name = entity_name
         self.filter = filter
         self.kwargs = kwargs
         self.number = number
+        #TODO: check num_duplicate exists and is integer
+        self.num_duplicate=num_duplicate
+        self.expand=expand
+        if return_option is not None and return_option is not 'father' :
+            raise Exception('the return option for Create Individual is not admitted')
+        else: 
+            self.return_option = return_option
+            
+#        if self.num_duplicate is not None and return_option is not 'father' :
+#            raise Exception('How can I put the child id if you tell me a father can have many children')
+
 #        assert filter is not None and number is None or \
 #               number is not None and filter is None
 
@@ -955,6 +967,29 @@ class CreateIndividual(EvaluableExpression):
         num_individuals = len(id_to_rownum)
 
         children = self._initial_values(array, to_give_birth, num_birth)
+        # select real duplication case
+        if self.num_duplicate is not None:
+            number_rep = array[self.num_duplicate].compress( array[self.num_duplicate]>0 )
+            children = children.repeat(number_rep,axis=0)
+            num_birth = number_rep.sum()
+            
+        if self.expand==True:        
+            id_dup = np.array([], dtype=np.uint8)
+            for x in number_rep :
+                id_dup = np.append(id_dup, np.arange(x))
+                
+            one_by_house = array['res'].compress( array[self.num_duplicate]>0 )  
+                           
+            indices = np.unique(one_by_house, return_index=True)[1]
+            decalage = np.zeros(len(one_by_house),dtype=int)           
+            decalage[indices] = number_rep[indices]
+            decalage[0] = 0 
+            decalage = decalage.cumsum().repeat(number_rep,axis=0)
+            last_id_res = array['res'].max()
+            children['res'] = last_id_res+id_dup+decalage+1 
+            
+        remember_id = children['id'].copy()
+        
         if num_birth:
             children['id'] = np.arange(num_individuals,
                                        num_individuals + num_birth)
@@ -966,35 +1001,66 @@ class CreateIndividual(EvaluableExpression):
             for k, v in self.kwargs.iteritems():
                 children[k] = expr_eval(v, child_context)
 
+
         add_individuals(target_context, children)
 
         # result is the ids of the new individuals corresponding to the source
         # entity
+# I change here to have the "father" name instead
         if to_give_birth is not None:
             result = np.empty(context_length(context), dtype=int)
             result.fill(-1)
+            father = np.empty(context_length(context), dtype=int)
+            father.fill(-1)
             if source_entity is target_entity:
                 extra_bools = np.zeros(num_birth, dtype=bool)
-                to_give_birth = np.concatenate((to_give_birth, extra_bools))
+                to_give_birth_all = np.concatenate((to_give_birth, extra_bools))
+                
+                list_children = np.ones(num_birth, dtype=bool)
+                initial = np.zeros(len(array), dtype=bool)
+                birth = np.concatenate((initial, list_children))
             # Note that np.place is a tad faster, but is currently buggy when
             # working with columns of structured arrays.
             # See http://projects.scipy.org/numpy/ticket/1869
-            result[to_give_birth] = children['id']
-            return result
+            result[to_give_birth_all] = children['id']
+            father[birth]=remember_id
+            
+            
+
+            
+            if self.return_option is None:
+                return result
+            elif self.return_option=='father' :
+                return father
         else:
             return None
 
     def dtype(self, context):
         return int
 
-
 class Clone(CreateIndividual):
-    def __init__(self, filter=None, **kwargs):
-        CreateIndividual.__init__(self, None, filter, None, **kwargs)
+    def __init__(self, filter=None, num_duplicate=None, return_option=None,**kwargs):
+        CreateIndividual.__init__(self, None, filter, None, 
+                                  num_duplicate, return_option,None,**kwargs)
+        self.num_duplicate=num_duplicate
+
 
     def _initial_values(self, array, to_give_birth, num_birth):
-        return array[to_give_birth]
-
+        return array[to_give_birth] 
+    
+    
+class Expand(CreateIndividual):
+    def __init__(self, filter=None, num_duplicate=None, return_option=None,**kwargs):
+        CreateIndividual.__init__(self, None, filter, None, 
+                                  num_duplicate, return_option,True,**kwargs)
+        self.num_duplicate=num_duplicate
+   
+    def _initial_values(self, array, to_give_birth, num_birth):
+        last_id_res = array['res'].max()
+        to_return = array[to_give_birth]
+        to_return['res'] += last_id_res
+        return to_return
+    
 
 class TableExpression(EvaluableExpression):
     pass
@@ -1123,5 +1189,6 @@ functions = {
     # misc
     'new': CreateIndividual,
     'clone': Clone,
+    'expand': Expand,
     'dump': Dump,
 }

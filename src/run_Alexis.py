@@ -6,6 +6,7 @@ import sys
 import main #je laisse le main parce que je ne veux pas travailler sur le import, je laisse celui de LIAM2
 from simulation import Simulation
 
+
 chemin = 'C:\\Users\\a.eidelman\\Desktop\\GenIPP_Pyth\\liam\\'
 chemin = 'M:\\Myliam2\\'
 chemin = 'T:\\Myliam2\\'
@@ -29,6 +30,9 @@ fichier= chemin+'Genebios\\console_genebios.yml'
 fichier= chemin+'Genebios\\vieillissement_genebios.yml'
 fichier= chemin+'Genebios\\console_test_marriage.yml'
 fichier= chemin+'Genebios\\console_genebios.yml'
+fichier= chemin+'Patrimoine\\duplication\\expand.yml'
+
+
 
 # fichier= chemin+'test\\small\\simulation.yml'
 

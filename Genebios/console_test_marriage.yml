@@ -18,7 +18,7 @@ entities:
     person:          
         processes:          
             union: 
-                - to_couple2: if(id<10,True,False)
+                - to_couple2: if((id<500) and (age>18) and (age<65),True,False)
                 - show('Number of birth', grpcount(to_couple2==1))
                 - conjoint: if(to_couple2,
                                  matching(set1filter=ISFEMALE, set2filter=ISMALE,

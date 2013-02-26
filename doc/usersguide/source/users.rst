@@ -33,3 +33,4 @@ Sometimes they are just very specific and are not useful in the general distribu
 - add an option in align function to use sidewalk alignment.
 - add an option in matching function to solve the global optimization program using the "Hungarian Algorithm"
 - add the possibility to have an expression in the alignment function with the percentage option.
+- change the clone process to have the father more that the child in output

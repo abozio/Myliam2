@@ -3,9 +3,11 @@ entities:
         fields:
             # period and id are implicit
             - pond:        float
+            - num_dup:        {type: int, initialdata: false}
             - pondfin:     {type: float, initialdata: false}
             - toclone:     {type: bool, initialdata: false}
             - clone_id : {type: int, initialdata: false}
+            - autre:   {type: int, initialdata: false}
             
         links:
             persons: {type: one2many, target: person, field: res}
@@ -22,30 +24,36 @@ entities:
                 # - show('la plus petite ponderation est:' grpmin(minpond))
                 - last_non_clone_id: grpmax(id)
                 - toclone: pond > 2*minpond
+                - num_dup: min(trunc(pond/minpond)-1,4)
                 # clone all menages with a weight > 1
-                - clone_id: clone(toclone)
+                - clone_id: clone(toclone,'num_dup','father')
+
                 
                 # modify the weight:
                 # for the original menages: (weight + 1) / 2
                 # for the new (cloned) menage: weight / 2
                 - is_clone: id > last_non_clone_id
                 - pondfin: if(toclone,
-                             pond/2,
+                             pond/(num_dup+1),
                              pond)
-                - pondfin: if(id>last_non_clone_id,
-                             pondfin/2,
-                             pondfin)                           
+                        
                                
     person:
         fields:
             - age:    int
             - sexe:   int
             - res:    int
+            - res2:    {type: int, initialdata: false}
             - pere:   int
             - mere:   int
             - conjoint: int
             - clone_id : {type: int, initialdata: false}
-  
+            - num_dup:   {type: int, initialdata: false}
+            - autre:   {type: int, initialdata: false}
+            - taille_men :   {type: int, initialdata: false}
+            - taille_men2:   {type: float, initialdata: false}
+            - voir1:   {type: int, initialdata: false}
+            - voir2:   {type: int, initialdata: false}
          
         links:
             menage:     {type: many2one, target: menage, field: res}
@@ -86,48 +94,40 @@ entities:
                 # - show(groupby(agegroup, gender, expr=grpsum(fweight), percent=True))
 
             expand:
+                - res2: res + grpmax(res)           
                 - last_non_clone_id: grpmax(id)
                 - toclone: menage.toclone
-                - clone_id: clone(toclone)
-
+                - num_dup: menage.num_dup
+                - clone_id: expand(toclone,'num_dup','father')
                 - is_clone: id > last_non_clone_id
 
-
-
-                - res: if(is_clone, menage.clone_id, res)
-                - mere: if(is_clone, mater.clone_id, mere)
-                - pere: if(is_clone, pater.clone_id, pere)
-                - conjoint: if(is_clone, conj.clone_id, conjoint)
-                - duplic.clone_id : 0       
+                # - taille_men: countlink(menage.persons)
+                - taille_men2: duplic.menage.get(countlink(persons))
+                - voir1: duplic.menage.get(minlink(persons,id))
+                - voir2: menage.get(minlink(persons,id))  
+                - conjoint: if((is_clone) and (conjoint>-1),
+                                (conjoint-voir1)*num_dup+voir2,
+                                conjoint)
+                - mere: if((is_clone) and (mere>0),
+                                (mere-voir1)*num_dup+voir2,
+                                mere)
+                - pere: if((is_clone) and (pere>0),
+                                (pere-voir1)*num_dup+voir2,
+                                pere)
+                
+                # - res: if(is_clone, menage.clone_id, res)
+                # - mere: if(is_clone, mater.clone_id, mere)
+                # - pere: if(is_clone, pater.clone_id, pere)
+                # - conjoint: if(is_clone, conj.clone_id, conjoint)
+                # - duplic.clone_id : 0       
 
 simulation:
     init:
         # - person: [shrink]
         # checks
         - menage: [check,expand]
-        # - person: [check]
-
-        # # pass 1: weight up to 2
-        # - menage: [expand]
         - person: [expand]
-        # # pass 2: weights up to 4
-        # - menage: [expand]
-        # - person: [expand]
-        # # pass 3: weights up to 8
-        # - menage: [expand]
-        # - person: [expand]
-        # # pass 4: weights up to 16
-        # - menage: [expand]
-        # - person: [expand]
-        # # pass 5: weights up to 32
-        # - menage: [expand]
-        # - person: [expand]
-        # # pass 6: weights up to 64
-        # - menage: [expand]
-        # - person: [expand]
-        # # pass 7: weights up to 128
-        # - menage: [expand]
-        # - person: [expand]
+
 
         # # checks
         # - menage: [weight, check]

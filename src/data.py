@@ -480,7 +480,6 @@ class H5Data(DataSource):
             entity.table = table.table
 
             entity.base_period = table.base_period
-
         return h5file, None, dataset['globals']
 
     def run(self, globals_fields, entities, start_period):

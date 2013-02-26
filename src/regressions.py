@@ -107,7 +107,6 @@ class LogitRegr(Regression):
     def build_expr(self):
         score_expr = LogitScore(self.expr)
         if self.align_kwargs is not None:
-            print self.align_kwargs
             return Alignment(score_expr, self.filter,
                              **self.align_kwargs)
         else:

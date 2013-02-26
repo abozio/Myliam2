@@ -32,6 +32,9 @@ class Simulation(object):
         'import': {
             '*': str
         },
+        'expand':{
+            '*': str   
+        },
         'globals': {
             'periodic': [{
                 '*': str
@@ -146,7 +149,6 @@ class Simulation(object):
                 
         #XXX: use validictory instead of my custom validator?
         # http://readthedocs.org/docs/validictory/
-        print content
         validate_dict(content, cls.yaml_layout)
 
         globals_def = content.get('globals', {})
