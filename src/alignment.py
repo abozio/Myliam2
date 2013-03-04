@@ -304,7 +304,6 @@ def align_get_indices_nd(context, filter_value, score,
                 maybe_to_take = affected - num_always
                 if method=='default':
                     if weights is None:
-
                         # take the last X individuals (ie those with the highest
                         # score)
                         indices_to_take = sorted_global_indices[-maybe_to_take:]
@@ -314,31 +313,31 @@ def align_get_indices_nd(context, filter_value, score,
                         # we need to invert the order because members are sorted
                         # on score ascendingly and we need to take those with
                         # highest score.
-                        if method=='default':                         
-                            weight_sums = np.cumsum(maybe_weights[::-1])
-                            threshold_idx = np.searchsorted(weight_sums, maybe_to_take)
-                            if threshold_idx < len(weight_sums):
-                                num_to_take = threshold_idx + 1
-                                # if there is enough weight to reach "maybe_to_take"
-                                overflow = weight_sums[threshold_idx] - maybe_to_take
-                                if overflow > 0:
-                                    # the next individual has too much weight, so we
-                                    # need to split it.
-                                    id_to_split = sorted_global_indices[threshold_idx]
-                                    past_error[group_idx] = overflow
-                                    to_split_indices.append(id_to_split)
-                                    to_split_overflow.append(overflow)
-                                else:
-                                    # we got exactly the number we wanted
-                                    assert overflow == 0
+                         
+                        weight_sums = np.cumsum(maybe_weights[::-1])
+                        threshold_idx = np.searchsorted(weight_sums, maybe_to_take)
+                        if threshold_idx < len(weight_sums):
+                            num_to_take = threshold_idx + 1
+                            # if there is enough weight to reach "maybe_to_take"
+                            overflow = weight_sums[threshold_idx] - maybe_to_take
+                            if overflow > 0:
+                                # the next individual has too much weight, so we
+                                # need to split it.
+                                id_to_split = sorted_global_indices[threshold_idx]
+                                past_error[group_idx] = overflow
+                                to_split_indices.append(id_to_split)
+                                to_split_overflow.append(overflow)
                             else:
-                                # we can't reach our target number of individuals
-                                # (probably because of a "leave" filter), so we
-                                # take all the ones we have
-                                #XXX: should we add *this* underflow to the past_error
-                                # too? It would probably accumulate!
-                                num_to_take = len(weight_sums)
-                            indices_to_take = sorted_global_indices[-num_to_take:]
+                                # we got exactly the number we wanted
+                                assert overflow == 0
+                        else:
+                            # we can't reach our target number of individuals
+                            # (probably because of a "leave" filter), so we
+                            # take all the ones we have
+                            #XXX: should we add *this* underflow to the past_error
+                            # too? It would probably accumulate!
+                            num_to_take = len(weight_sums)
+                        indices_to_take = sorted_global_indices[-num_to_take:]
                 if method=='walk':                    
                     #U draws a random number and then makes mybe_to_take step of length 1
                     U=random.random()+np.arange(min(maybe_to_take,len(sorted_global_indices))) 
@@ -358,7 +357,13 @@ def align_get_indices_nd(context, filter_value, score,
                         weight_sums = np.cumsum(maybe_weights[::-1])
                         threshold_idx = np.searchsorted(weight_sums, maybe_to_take)
                         indices_to_take = indices_to_take[:(threshold_idx+1)]
-
+                        
+                underflow = maybe_to_take - len(indices_to_take)
+                if underflow > 0:
+                    total_underflow += underflow
+                total_indices.extend(indices_to_take)
+            elif affected < num_always:
+                total_overflow += num_always - affected
 # this assertion is only valid in the non weighted case
 #    assert len(total_indices) == \
 #           total_affected + total_overflow - total_underflow

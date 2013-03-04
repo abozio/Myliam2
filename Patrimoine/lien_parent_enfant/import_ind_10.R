@@ -4,19 +4,19 @@
 rm(list = ls()) # Clean the workspace
 gc()            # Garbage collecting (for memory efficiency)
 
-user <- "AE_port"
+user <- "IFS"
 
 ## AE
 if (user=="AE_port"){
   chem_patr <-"M:/data/Patrimoine/EP 2009-10/Stata/"
-  dest <-"M:/Myliam2/Patrimoine/"
+  dest <-"M:/Myliam2/Patrimoine/lien_parent_enfant/"
 }
 if (user=="IPP"){
   chem_patr <-"M:/Patrimoine/EP 2009-10/Stata/"
 }
 if (user=="IFS"){
   chem_patr <-"T:/data/Patrimoine/EP 2009-10/Stata/"
-  dest <-"T:/Myliam2/Patrimoine/"
+  dest <-"T:/Myliam2/Patrimoine/lien_parent_enfant/"
 }
 
 
@@ -296,9 +296,10 @@ save_inf <- function(i){
   inf_pere( which(men$sexepr[liste]==1 & men[liste,paste0("hodln",i)]=="3"), "cj")
   inf_mere( which(men$sexepr[liste]==2 & men[liste,paste0("hodln",i)]=="3"), "cj")
 
+  pond <- men[liste,"pond"]
   print(length(liste))
   to_match = rep.int(1,length(liste))
-  ajout <- cbind(sexe,anais,couple,dip6,nb_enf,situa,classif,info_pere,info_mere, to_match,hodln)
+  ajout <- cbind(sexe,anais,couple,dip6,nb_enf,situa,classif,info_pere,info_mere, to_match,hodln,pond)
 }
 
 enf_ailleurs <- save_inf(1)
@@ -319,7 +320,7 @@ men = subset(men, select= names(men)[which(! names(men) %in% ToRemove)] )
 #### info sur les parents
 cherche_parent <- as.matrix(subset(ind, per1e == "2" | mer1e == "2", 
                          select= c(id,sexe,anais,couple,dip14,situa,jemnais,gparmat,jemprof,jemact,
-                                   jepnais,gparpat,jepprof,per1e,mer1e,jegrave_div,classif)))
+                                   jepnais,gparpat,jepprof,per1e,mer1e,jegrave_div,classif,pond)))
 
 # on supprime les infos quand on ne cherche pas ce parent
 pas_pere <- which(cherche_parent[,"per1e"] %in% c("1","3","4") )
@@ -353,10 +354,28 @@ colnames(cherche_parent)[which(colnames(cherche_parent)=="")] <- "nb_enf"
 library(plyr)
 
 lien = rbind.fill.matrix(cherche_parent,enf_ailleurs)
-lien[16025:16100,]
+taille = nrow(lien)
+colnames(lien)[1] <- "id_origin"
+id = seq(1:taille)
+period = rep(2009, taille)
+lien = cbind(id,period,lien)
 
-f  <- paste0(dest,"lien.h5")
+passage = lien[, c("id","id_origin","pere","mere")]
+lien[16025:16032,]
+passage[16025:16032,]
+
+
+# TODO : convertir en numeric et ajouter period
+lien = subset( lien, select = -c(id_origin,pere,mere))
+dimnames(lien)
+lien =apply(lien, 2,as.numeric)
+lien[which(is.na(lien))]  <- 0
+
+f  <- paste0(dest,"lien.csv")
 write.csv(lien,file=f)
+
+save(cherche_parent,enf_ailleurs,file=paste0(dest,"lien.R"))
+
 
 
 # il n'y a plus qu'a faire ce matching....

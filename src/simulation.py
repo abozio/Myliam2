@@ -32,9 +32,6 @@ class Simulation(object):
         'import': {
             '*': str
         },
-        'expand':{
-            '*': str   
-        },
         'globals': {
             'periodic': [{
                 '*': str

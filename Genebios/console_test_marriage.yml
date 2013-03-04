@@ -38,7 +38,6 @@ simulation:
         #- person: [age, agegroup, dump_info, show_demography , marriage]
         - person: [union]
 
-
     input:
         file: simple2009.h5
     output:

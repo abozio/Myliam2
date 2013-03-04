@@ -1014,15 +1014,15 @@ class CreateIndividual(EvaluableExpression):
             father.fill(-1)
             if source_entity is target_entity:
                 extra_bools = np.zeros(num_birth, dtype=bool)
-                to_give_birth_all = np.concatenate((to_give_birth, extra_bools))
+                to_give_birth = np.concatenate((to_give_birth, extra_bools))
                 
-                list_children = np.ones(num_birth, dtype=bool)
-                initial = np.zeros(len(array), dtype=bool)
-                birth = np.concatenate((initial, list_children))
+            list_children = np.ones(num_birth, dtype=bool)
+            initial = np.zeros(len(array), dtype=bool)
+            birth = np.concatenate((initial, list_children))
             # Note that np.place is a tad faster, but is currently buggy when
             # working with columns of structured arrays.
             # See http://projects.scipy.org/numpy/ticket/1869
-            result[to_give_birth_all] = children['id']
+            result[to_give_birth] = children['id']
             father[birth]=remember_id
             
             

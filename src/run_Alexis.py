@@ -28,11 +28,12 @@ fichier=chemin+'test\\examples\\demo01.yml'
 ## ici tourne Simulation.from_yaml et éventuellement Simulation.interactive
 fichier= chemin+'Genebios\\console_genebios.yml'
 fichier= chemin+'Genebios\\vieillissement_genebios.yml'
-fichier= chemin+'Genebios\\console_test_marriage.yml'
-fichier= chemin+'Genebios\\console_genebios.yml'
+
 fichier= chemin+'Patrimoine\\duplication\\expand.yml'
 
-
+fichier= chemin+'Patrimoine\\lien_parent_enfant\\match_par_enf.yml'
+fichier= chemin+'Genebios\\console_test_marriage.yml'
+fichier= chemin+'Genebios\\console_genebios.yml'
 
 # fichier= chemin+'test\\small\\simulation.yml'
 

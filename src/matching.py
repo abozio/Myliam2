@@ -6,7 +6,7 @@ from properties import EvaluableExpression
 
 from utils import loop_wh_progress
 
-#from munkres import Munkres, print_matrix
+import MunkresX
 import pdb
 # import munkresX 
 
@@ -92,11 +92,12 @@ class Matching(EvaluableExpression):
 #        test.update((k, set1[k]) for k in used_variables1)
 #
 #
-        # we want a squre matrix
-        dim = max(set1filter.sum(),set2filter.sum())
-        cost = np.zeros((dim, dim) )
-#        cost = np.array([])
-        print cost
+
+        
+######## Tentative de Munkres
+        
+
+        cost = []
         def create_cost(idx, sorted_idx):
 
             global cost
@@ -105,54 +106,14 @@ class Matching(EvaluableExpression):
             local_ctx.update((k, set1[k][sorted_idx]) for k in used_variables1)
 
             set2_scores = expr_eval(score_expr, local_ctx)
-#            print cost[(idx-1),:]
-#            print set2_scores[:]
-#            print local_ctx
-#            print set2_scores
-#            print max(set2_scores),min(set2_scores)
-#            
-            cost[(idx-1),:len(set2_scores)] = set2_scores[:]
-#            print cost
-#            cost=np.vstack((cost,set2_scores))
-
-#            individual2_idx = np.argmax(set2_scores)
-#
-#            id1 = local_ctx['id']
-#            id2 = local_ctx['__other_id'][individual2_idx]
-
-#            local_ctx = context_delete(local_ctx, individual2_idx)
-#
-#            result[id_to_rownum[id1]] = id2
-#            result[id_to_rownum[id2]] = id1
-
-        loop_wh_progress(create_cost, sorted_set1_indices)  
-
-        cost=-cost   
-        if dim > set1filter.sum() :
-            cost[set1filter.sum():dim,:] += cost.max()+1
-        if dim > set2filter.sum() :
-            cost[:,set2filter.sum():dim] += cost.max()+1
-        
-        matrix=np.matrix(cost.transpose())
-        matrix=matrix.tolist()   
-#        for row in range(4):
-#            print cost[row]
-        print "debut de l'optimisation X"
-#        munkresX.maxWeightMatching(matrix)
-        print "debut de l'optimisation"
-        m = Munkres()
-        indexes = m.compute(matrix)
-#        print indexes
-#        print_matrix(matrix, msg='Lowest cost through this matrix:')
-#        total = 0
-#        for row, column in indexes:
-#            value = matrix[row][column]
-#            total += value
-#            print '(%d, %d) -> %d' % (row, column, value)
-#        print 'total cost: %d' % total 
-
-#        for row in range(4):
-#            print cost[row]
+            cost.append(set2_scores[:].tolist())
+            
+        loop_wh_progress(create_cost, sorted_set1_indices)       
+        resultat = MunkresX.maxWeightMatching(cost)
+        for id1,id2 in resultat.items(): 
+            result[id_to_rownum[id1]] = id2
+            result[id_to_rownum[id2]] = id1    
+        print result
              
         def match_one_set1_individual(idx, sorted_idx):
             global local_ctx
@@ -184,11 +145,11 @@ class Matching(EvaluableExpression):
             result[id_to_rownum[id1]] = id2
             result[id_to_rownum[id2]] = id1
 
-        loop_wh_progress(match_one_set1_individual, sorted_set1_indices)
+        loop_wh_progress(match_one_set1_individual, sorted_set1_indices)       
+        print result
         return result
 
     def dtype(self, context):
         return int
-
 
 functions = {'matching': Matching}
