@@ -1,0 +1,18 @@
+entities:
+    person:          
+        processes:    
+ 
+            init_education_level:
+                - education_level: choice([LOWER_SECONDARY_EDU,
+                                           UPPER_SECONDARY_EDU,
+                                           TERTIARY_EDU], [0.25, 0.39, 0.36])
+
+            ineducation:
+                # unemployed if left education
+                - workstate: if(ISSTUDENT and
+                                   (((age >= 16) and IS_LOWER_SECONDARY_EDU) or
+                                    ((age >= 19) and IS_UPPER_SECONDARY_EDU) or
+                                    ((age >= 24) and IS_TERTIARY_EDU)),
+                                UNEMPLOYED,
+                                workstate)
+                - show('num students', grpsum(ISSTUDENT))

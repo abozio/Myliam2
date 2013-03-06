@@ -1008,29 +1008,28 @@ class CreateIndividual(EvaluableExpression):
         # entity
 # I change here to have the "father" name instead
         if to_give_birth is not None:
-            result = np.empty(context_length(context), dtype=int)
-            result.fill(-1)
-            father = np.empty(context_length(context), dtype=int)
-            father.fill(-1)
-            if source_entity is target_entity:
-                extra_bools = np.zeros(num_birth, dtype=bool)
-                to_give_birth = np.concatenate((to_give_birth, extra_bools))
-                
-            list_children = np.ones(num_birth, dtype=bool)
-            initial = np.zeros(len(array), dtype=bool)
-            birth = np.concatenate((initial, list_children))
-            # Note that np.place is a tad faster, but is currently buggy when
-            # working with columns of structured arrays.
-            # See http://projects.scipy.org/numpy/ticket/1869
-            result[to_give_birth] = children['id']
-            father[birth]=remember_id
-            
-            
-
-            
             if self.return_option is None:
+                result = np.empty(context_length(context), dtype=int)
+                result.fill(-1)
+                # TODO: must change something to have father size correct with
+                # target and not with source.
+                if source_entity is target_entity:               
+                    extra_bools = np.zeros(num_birth, dtype=bool)
+                    to_give_birth = np.concatenate((to_give_birth, extra_bools))
+                    
+                # Note that np.place is a tad faster, but is currently buggy when
+                # working with columns of structured arrays.
+                # See http://projects.scipy.org/numpy/ticket/1869
+                result[to_give_birth] = children['id']
+
                 return result
             elif self.return_option=='father' :
+                father = np.empty(context_length(context), dtype=int)
+                father.fill(-1)  
+                list_children = np.ones(num_birth, dtype=bool)
+                initial = np.zeros(len(array), dtype=bool)
+                birth = np.concatenate((initial, list_children))                              
+                father[birth] = remember_id
                 return father
         else:
             return None

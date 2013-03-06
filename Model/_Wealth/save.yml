@@ -1,0 +1,7 @@
+entities:
+    menage:          
+        processes:    
+            init_wealth: 
+                - wealth: 0
+            saving:
+                - wealth:  wealth + sumlink(persons,salary+pension+chomage) - (rent + conso)

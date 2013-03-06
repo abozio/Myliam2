@@ -11,7 +11,7 @@ import pdb
 # import munkresX 
 
 class Matching(EvaluableExpression):
-    def __init__(self, set1filter, set2filter, score, orderby):
+    def __init__(self, set1filter, set2filter, score, orderby,option="default"):
         self.set1filter = set1filter
         self.set2filter = set2filter
         self.score_expr = score
@@ -20,6 +20,9 @@ class Matching(EvaluableExpression):
                             "supported anymore. You should use a normal "
                             "expression (ie simply remove the quotes).")
         self.orderby = orderby
+        self.option = option
+        assert option in ("default","optimal")
+        
 
     def traverse(self, context):
         for node in traverse_expr(self.set1filter, context):
@@ -96,58 +99,43 @@ class Matching(EvaluableExpression):
         
 ######## Tentative de Munkres
         
-
-        cost = []
-        def create_cost(idx, sorted_idx):
-
-            global cost
-            if not context_length(local_ctx):
-                raise StopIteration
-            local_ctx.update((k, set1[k][sorted_idx]) for k in used_variables1)
-
-            set2_scores = expr_eval(score_expr, local_ctx)
-            cost.append(set2_scores[:].tolist())
-            
-        loop_wh_progress(create_cost, sorted_set1_indices)       
-        resultat = MunkresX.maxWeightMatching(cost)
-        for id1,id2 in resultat.items(): 
-            result[id_to_rownum[id1]] = id2
-            result[id_to_rownum[id2]] = id1    
-        print result
-             
-        def match_one_set1_individual(idx, sorted_idx):
-            global local_ctx
-
-            if not context_length(local_ctx):
-                raise StopIteration
-
-            local_ctx.update((k, set1[k][sorted_idx]) for k in used_variables1)
-#            print local_ctx
-
-#            pk = tuple(individual1[fname] for fname in pk_names)
-#            optimized_expr = optimized_exprs.get(pk)
-#            if optimized_expr is None:
-#                for name in pk_names:
-#                    fake_set1['__f_%s' % name].value = individual1[name]
-#                optimized_expr = str(symbolic_expr.simplify())
-#                optimized_exprs[pk] = optimized_expr
-#            set2_scores = evaluate(optimized_expr, mm_dict, set2)
-
-            set2_scores = expr_eval(score_expr, local_ctx)
-#            print set2_scores
-            individual2_idx = np.argmax(set2_scores)
-
-            id1 = local_ctx['id']
-            id2 = local_ctx['__other_id'][individual2_idx]
-
-            local_ctx = context_delete(local_ctx, individual2_idx)
-
-            result[id_to_rownum[id1]] = id2
-            result[id_to_rownum[id2]] = id1
-
-        loop_wh_progress(match_one_set1_individual, sorted_set1_indices)       
-        print result
-        return result
+        if self.option == "optimal": 
+            cost = []
+            def create_cost(idx, sorted_idx):
+    
+                global cost
+                if not context_length(local_ctx):
+                    raise StopIteration
+                local_ctx.update((k, set1[k][sorted_idx]) for k in used_variables1)
+    
+                set2_scores = expr_eval(score_expr, local_ctx)
+                cost.append(set2_scores[:].tolist())
+                
+            loop_wh_progress(create_cost, sorted_set1_indices)       
+            resultat = MunkresX.maxWeightMatching(cost)
+            for id1,id2 in resultat.items(): 
+                result[id_to_rownum[id1]] = id2
+                result[id_to_rownum[id2]] = id1    
+            return result
+        
+        else : 
+            def match_one_set1_individual(idx, sorted_idx):
+                global local_ctx   
+                if not context_length(local_ctx):
+                    raise StopIteration    
+                local_ctx.update((k, set1[k][sorted_idx]) for k in used_variables1)
+                set2_scores = expr_eval(score_expr, local_ctx)
+    #            print set2_scores
+                individual2_idx = np.argmax(set2_scores)   
+                id1 = local_ctx['id']
+                id2 = local_ctx['__other_id'][individual2_idx]    
+                local_ctx = context_delete(local_ctx, individual2_idx)
+    
+                result[id_to_rownum[id1]] = id2
+                result[id_to_rownum[id2]] = id1
+    
+            loop_wh_progress(match_one_set1_individual, sorted_set1_indices)       
+            return result
 
     def dtype(self, context):
         return int

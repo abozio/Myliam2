@@ -1,0 +1,8 @@
+entities:
+    person:          
+        processes:    
+            income:
+                - salary:  1500
+                - pension: 1000
+                - chomage: 1000
+                - capital_inc: household.wealth*0.1 * (quires==1)

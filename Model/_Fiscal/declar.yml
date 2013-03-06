@@ -1,0 +1,18 @@
+entities:
+    declar:
+        fields:
+            # period and id are implicit
+            - nb_persons:  {type: int, initialdata: false}
+            - nb_children: {type: int, initialdata: false}
+            - region_id:   {type: int, initialdata: false}
+            - rent:        {type: float, initialdata: false}
+            - conso:        {type: float, initialdata: false}
+            - house_inc:        {type: float, initialdata: false}
+            - value:        {type: float, initialdata: false}
+             
+        links:
+            on_declar: {type: one2many, target: person, field: foy}
+            
+        processes:
+            rien: 
+                - pouet: 0

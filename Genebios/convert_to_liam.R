@@ -80,10 +80,10 @@ PersonPast = subset(person, ! period %in% c(2009+seq(2010:2060)))
 write.csv(PersonPast,file="person.csv",row.names=F)
 
 ####### table 2009 ######
-person2009 <- subset( person, period==2009)
+person2009 <- subset(person, period==2009)
 person_sta = subset(person_sta, ! as.vector(person_sta$id)  %in% as.vector(person_sta[which(person_sta$age<0),]$id))
-person2009 <- merge( person2009,person_sta, by=c("id","period"),sort = F)
-person2009 <- subset( person2009, age>0)
+person2009 <- merge(person2009,person_sta, by=c("id","period"),sort = F)
+person2009 <- subset(person2009, age>0)
 
 # on invente des ménages, à l'instinct. 
 person2009$res<-seq(1:nrow(person2009))

@@ -1,0 +1,11 @@
+Avec les vraies données de patrimoine : 
+	- calculer le durée en couple, la mettre à bon escient avant 2008
+	- mettre le patrimoine et les revenus un peu mieux
+
+regler ces histoires de matching et de munkres rectangulaire
+
+mieux gerer les logements avec de la place, des tailles de logement, etc
+Remarque : logement divorce, mariage, independance
+
+Faire un schema ou un tableau avec ou intervient chaque truc
+Faire un check qui tounre à la fin de chaque simulation

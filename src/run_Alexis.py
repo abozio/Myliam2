@@ -20,6 +20,7 @@ fichier= chemin+'test\\small\\import.yml'
 sys.argv.append(fichier)
 # main.main()
 
+
 #demo01
 fichier=chemin+'test\\examples\\demo01.yml'
 # on ne peut plus ajouter comme argument -i ou --interactive 
@@ -33,7 +34,7 @@ fichier= chemin+'Patrimoine\\duplication\\expand.yml'
 
 fichier= chemin+'Patrimoine\\lien_parent_enfant\\match_par_enf.yml'
 fichier= chemin+'Genebios\\console_test_marriage.yml'
-fichier= chemin+'Genebios\\console_genebios.yml'
+fichier= chemin+'Model\\console.yml'
 
 # fichier= chemin+'test\\small\\simulation.yml'
 
@@ -43,6 +44,7 @@ fichier= chemin+'Genebios\\console_genebios.yml'
 
 #                    output_dir=None,
 #                    output_file=None)
+
 ## return Simulation(globals_fields, periods, start_period,init_processes, init_entities, processes, entities, data_source, default_entity)
 ##TODO: on pourrait donc définir directement ces champs ! #TODO
 #fichier='C:\\Users\\a.eidelman\\Desktop\\GenIPP_Pyth\\liam\\test\\examples\\demo04.yml'

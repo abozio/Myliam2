@@ -77,25 +77,31 @@ def augment():
 
 
 
-def maxWeightMatching(weights):
+def maxWeightMatching(weights,option='transpose'):
     """ given w, the weight matrix of a complete bipartite graph,
         returns the mappings Mu : U->V ,Mv : V->U encoding the matching
         as well as the value of it.
     """
     
-    # Create a square matrix if needed
-    d = len(weights) - len(weights[0]) 
-    if d > 0 :
-        for i in range(len(weights)):
-            weights[i].extend([0] * d)
-    if d < 0 :
-        for i in range(-d):
-            weights.append([0] * len(weights[0]))
+    assert option in ('complete','transpose')
+        
+    d = len(weights) - len(weights[0])   
+    if option == 'complete':
+        if d > 0 :
+            for i in range(len(weights)):
+                weights[i].extend([0] * d)
+        if d < 0 :
+            for i in range(-d):
+                weights.append([0] * len(weights[0]))
+    else:
+        if d >0 :
+            weights = map(list, zip(*weights))
 
     global U,V,S,T,Mu,Mv,lu,lv, minSlack, w
     w = list(weights)
     for i in range(len(weights)):
-        w[i] = map(lambda x: x*-1, weights[i])   
+        w[i] = map(lambda x: x*-1, weights[i])  
+    print w 
     n  = len(w)
     U  = V = range(n)
     lu = [ max([w[u][v] for v in V]) for u in U]  # start with trivial labels
@@ -111,12 +117,18 @@ def maxWeightMatching(weights):
         augment()
     #                                    val. of matching is total edge weight
     val = sum(lu)+sum(lv)
-    return Mu
-
+    if option != 'complete' and d>0:
+        return Mv,val
+    else : 
+        return Mu,val
   
 #  a small example 
 
+print maxWeightMatching([[1,2,100,0],[3,6,9,0],[3,6,9,0],[3,6,9,0],[0,0,0,0]])
+#print maxWeightMatching([[1, 3, 3, 3, 4], [2, 6, 6, 6, 8], [100, 9, 9, 9, 12], [4, 12, 12, 12, 16]])
+print maxWeightMatching([[1,2,100,0],[3,6,9,0],[4,8,12,0]])
 print maxWeightMatching([[1,2,100,4],[3,6,9,12],[4,8,12,16]])
+
 
 import numpy as np
 import time as t
@@ -124,7 +136,7 @@ n = 100
 mat = (1000000*np.random.rand(n,n)).round()
 mat = mat.tolist()
 #print mat
-print maxWeightMatching(mat)
+#print maxWeightMatching(mat)
 
 # read from standard input a line with n
 # then n*n lines with u,v,w[u][v]
@@ -206,7 +218,7 @@ def calc_expand(matrix,duplic):
 mat = np.arange(16).reshape(4,4)
 duplic = np.array( [(3,6,4,3),(4,8,4,3)])
 
-calc_expand(mat,duplic)
+#calc_expand(mat,duplic)
 
 #
 def temps_expand(n,m,non_expand=True):
@@ -238,6 +250,6 @@ def temps_expand(n,m,non_expand=True):
     else :
         return temps_expand1, temps_expand2
 
-voir =  temps_expand(14,20)
-print voir
-print voir[3]
+#voir =  temps_expand(14,20)
+#print voir
+#print voir[3]

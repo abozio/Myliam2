@@ -169,6 +169,7 @@ person*.csv
 menage20*
 
 *.h5
+*.csv
 Patrimoine\simple2009.h5
 #Patrimoine/*
 test/small*

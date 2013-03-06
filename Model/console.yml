@@ -1,0 +1,46 @@
+# second entity, links, link methods, init, procedures, local variables,
+# dump's suffix argument, choice
+
+import:
+    person:      person_init.yml
+    menage:     _house//menage.yml
+    declar:     _fiscal//declar.yml
+    work:       _work//work.yml
+    income:     _work//income0.yml
+    life_death: _demo//life_death.yml
+    union:      _union//union_GeneBios.yml
+    youth:      _educ//youth.yml
+    moving:     _house//moving.yml
+    conso:      _consumption//conso.yml
+    wealth:     _wealth//save.yml
+
+globals:
+    periodic:
+        - WEMRA: int
+
+simulation:
+    init: 
+        - menage: [init_region_id,init_rent,init_value,init_wealth]
+        - person: [init_couple,init_education_level,init_workstate,init_foy]
+    processes:
+        #- person: [age, agegroup, dump_info, show_demography , marriage]
+        - menage: [household_composition,empty_house]
+        - person: [ageing, birth, death,marriage,independance]
+        - menage: [household_composition,empty_house]
+        - person: [divorce]
+        - menage: [household_composition,empty_house]
+        - person: [ineducation,inwork, unemp_process, income
+#            dump_all
+            
+        ]
+        - menage: [init_value,consumption,saving]
+        - declar: [rien]
+        
+    input:
+        file: simple2009.h5
+    output:
+        file: simulTest.h5
+
+    # first simulated period
+    start_period: 2010
+    periods: 2
