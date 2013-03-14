@@ -12,6 +12,7 @@
 #setwd("C:/Users/a.eidelman/Desktop/GenIPP_Pyth/liam/Patrimoine/data/")
 #setwd("M:/Myliam2/Patrimoine/data/")
 setwd("T:/Myliam2/Genebios/data/")
+setwd("C:/Myliam2/Genebios/data/")
 debut        <- 1900
 t_deb        <- 109
 t_fin        <- 160

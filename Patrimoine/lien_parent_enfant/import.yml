@@ -1,8 +1,8 @@
-output: T:\Myliam2\Patrimoine\lien_parent_enfant\simple2009.h5
+output: C:\Myliam2\Patrimoine\lien_parent_enfant\lien.h5
 
 entities:
     person:
-        path: T:\Myliam2\Patrimoine\lien_parent_enfant\lien.csv
+        path: C:\Myliam2\Patrimoine\lien_parent_enfant\lien.csv
         fields:
             - couple: int
             - anais : int
@@ -24,7 +24,7 @@ entities:
             - to_match: int  
             - nb_enf: int
             - hodln: int  
-            
+            - pond: float
            
         # if you want to invert the value of some boolean fields (True -> False
         # and False -> True), add them to the "invert" list below.

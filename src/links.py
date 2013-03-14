@@ -9,6 +9,7 @@ from context import EntityContext, context_length
 from registry import entity_registry
 from properties import EvaluableExpression
 
+import pdb
 
 class Link(object):
     def __init__(self, name, link_type, link_field, target_entity):

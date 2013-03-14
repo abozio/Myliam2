@@ -1,6 +1,8 @@
 # lecture des données de l'enquêtre patrimoine, en particulier des variables individuelles permettant
 # de simuler
 
+# TODO : ajouter absolument parent proprietaire de leur logement
+
 rm(list = ls()) # Clean the workspace
 gc()            # Garbage collecting (for memory efficiency)
 
@@ -365,7 +367,6 @@ lien[16025:16032,]
 passage[16025:16032,]
 
 
-# TODO : convertir en numeric et ajouter period
 lien = subset( lien, select = -c(id_origin,pere,mere))
 dimnames(lien)
 lien =apply(lien, 2,as.numeric)

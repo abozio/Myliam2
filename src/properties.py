@@ -883,7 +883,8 @@ def add_individuals(target_context, children):
 #TODO: allow number to be an expression
 class CreateIndividual(EvaluableExpression):
     def __init__(self, entity_name=None, filter=None, number=None,
-                 num_duplicate=None,return_option=None,expand=None, **kwargs):
+                 num_duplicate=None,return_option=None,expand=None, 
+                 numerotation=None, **kwargs):
         self.entity_name = entity_name
         self.filter = filter
         self.kwargs = kwargs
@@ -895,6 +896,11 @@ class CreateIndividual(EvaluableExpression):
             raise Exception('the return option for Create Individual is not admitted')
         else: 
             self.return_option = return_option
+        
+        if numerotation is not None and num_duplicate is None :
+            raise Exception('No need to have a numerotation when only one replication')
+        else: 
+            self.numerotation = numerotation
             
 #        if self.num_duplicate is not None and return_option is not 'father' :
 #            raise Exception('How can I put the child id if you tell me a father can have many children')
@@ -973,20 +979,26 @@ class CreateIndividual(EvaluableExpression):
             children = children.repeat(number_rep,axis=0)
             num_birth = number_rep.sum()
             
-        if self.expand==True:        
-            id_dup = np.array([], dtype=np.uint8)
-            for x in number_rep :
-                id_dup = np.append(id_dup, np.arange(x))
-                
+        if self.expand==True:    
+            from numpy.lib.stride_tricks import as_strided
+        
+            id_add = np.arange(number_rep.max())
+            id_add = as_strided(id_add ,
+                             shape=number_rep.shape + id_add.shape,
+                             strides=(0,) + id_add.strides)
+            id_add =  id_add[id_add < number_rep[:, None]]
             one_by_house = array['res'].compress( array[self.num_duplicate]>0 )  
-                           
-            indices = np.unique(one_by_house, return_index=True)[1]
-            decalage = np.zeros(len(one_by_house),dtype=int)           
-            decalage[indices] = number_rep[indices]
-            decalage[0] = 0 
+#            indices = np.unique(one_by_house)
+#            size_by_id = np.bincount(one_by_house) 
+#            size_by_id = size_by_id.compress(size_by_id>0)
+#            size_by_id = size_by_id.repeat(size_by_id)  
+            id_ini = one_by_house.repeat(number_rep,axis=0)
+            decalage = np.zeros(len(one_by_house),dtype=int)  
+            indices = np.unique(one_by_house,return_index=True)[1]      
+            decalage[indices[1:]] = number_rep[indices]
             decalage = decalage.cumsum().repeat(number_rep,axis=0)
-            last_id_res = array['res'].max()
-            children['res'] = last_id_res+id_dup+decalage+1 
+#            decalage = decalage - decalage[0] 
+            children['res'] = id_add+decalage+ array['res'].max()+1
             
         remember_id = children['id'].copy()
         
@@ -1000,13 +1012,22 @@ class CreateIndividual(EvaluableExpression):
                                            used_variables)
             for k, v in self.kwargs.iteritems():
                 children[k] = expr_eval(v, child_context)
-
+        
+        if self.numerotation is not None:
+            from numpy.lib.stride_tricks import as_strided
+            initial = np.zeros(len(array), dtype=bool)  
+            id_dup = np.arange(number_rep.max())
+            id_dup = as_strided(id_dup ,
+                             shape=number_rep.shape + id_dup.shape,
+                             strides=(0,) + id_dup.strides)
+            id_dup =  id_dup[id_dup < number_rep[:, None]]  +1    
+            children[self.numerotation] = id_dup
 
         add_individuals(target_context, children)
 
         # result is the ids of the new individuals corresponding to the source
         # entity
-# I change here to have the "father" name instead
+        # I change here to have the "father" name instead
         if to_give_birth is not None:
             if self.return_option is None:
                 result = np.empty(context_length(context), dtype=int)
@@ -1033,14 +1054,17 @@ class CreateIndividual(EvaluableExpression):
                 return father
         else:
             return None
+               
 
     def dtype(self, context):
         return int
 
 class Clone(CreateIndividual):
-    def __init__(self, filter=None, num_duplicate=None, return_option=None,**kwargs):
+    def __init__(self, filter=None, num_duplicate=None, return_option=None,
+                 numerotation=None,**kwargs):
         CreateIndividual.__init__(self, None, filter, None, 
-                                  num_duplicate, return_option,None,**kwargs)
+                                  num_duplicate, return_option,None,
+                                  numerotation,**kwargs)
         self.num_duplicate=num_duplicate
 
 
@@ -1049,9 +1073,11 @@ class Clone(CreateIndividual):
     
     
 class Expand(CreateIndividual):
-    def __init__(self, filter=None, num_duplicate=None, return_option=None,**kwargs):
+    def __init__(self, filter=None, num_duplicate=None, return_option=None,
+                 numerotation=None,**kwargs):
         CreateIndividual.__init__(self, None, filter, None, 
-                                  num_duplicate, return_option,True,**kwargs)
+                                  num_duplicate, return_option,True,
+                                  numerotation,**kwargs)
         self.num_duplicate=num_duplicate
    
     def _initial_values(self, array, to_give_birth, num_birth):

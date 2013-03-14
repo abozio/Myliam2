@@ -10,6 +10,7 @@ from simulation import Simulation
 chemin = 'C:\\Users\\a.eidelman\\Desktop\\GenIPP_Pyth\\liam\\'
 chemin = 'M:\\Myliam2\\'
 chemin = 'T:\\Myliam2\\'
+chemin = 'C:\\Myliam2\\'
 
 print chemin
 #import
@@ -27,15 +28,25 @@ fichier=chemin+'test\\examples\\demo01.yml'
 # en revanche on pourrait préciser les tables d'entrées et de sortie si elles n'étaient pas au même endroit que le fichier yml
 
 ## ici tourne Simulation.from_yaml et éventuellement Simulation.interactive
-fichier= chemin+'Genebios\\console_genebios.yml'
+
 fichier= chemin+'Genebios\\vieillissement_genebios.yml'
 
 fichier= chemin+'Patrimoine\\duplication\\expand.yml'
 
-fichier= chemin+'Patrimoine\\lien_parent_enfant\\match_par_enf.yml'
-fichier= chemin+'Genebios\\console_test_marriage.yml'
-fichier= chemin+'Model\\console.yml'
 
+fichier= chemin+'Genebios\\console_test_marriage.yml'
+fichier= chemin+'Genebios\\console_genebios.yml'
+
+
+fichier= chemin+'Patrimoine\\lien_parent_enfant\\match_par_enf.yml'
+fichier= chemin+'Patrimoine\\lien_parent_enfant\\expand.yml'
+fichier= chemin+'Patrimoine\\lien_parent_enfant\\match_par_enf.yml'
+
+
+fichier= chemin+'Model\\expand.yml'
+
+fichier= chemin+'Model\\expand.yml'
+fichier= chemin+'Model\\console.yml'
 # fichier= chemin+'test\\small\\simulation.yml'
 
 #simulation= Simulation.from_yaml(fichier,

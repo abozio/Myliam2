@@ -1,0 +1,72 @@
+# expand propre au lien parent enfant. 
+# ici, on prend le minimum sur la base, mais en théorie, il faudrait mieux prendre la même table 
+# d'expand que dans le reste du modele, donc avec le miniumum d'info
+
+       
+entities:
+    person:    
+        fields:
+            - couple: int
+            - anais : int
+            - sexe: int
+
+            - situa: int
+            - jemnais: int
+            - gparmat : int
+            - jemprof : int
+            - jemact : int
+            - jepnais: int
+            - gparpat : int
+            - jepprof : int
+            - per1e: int
+            - mer1e: int
+            - jegrave_div: int
+            - classif: int
+            - dip6: int
+            - to_match: int  
+            - nb_enf: int
+            - hodln: int
+            - pond: float
+            
+            - num_dup:        {type: int, initialdata: false}
+            - toclone:     {type: bool, initialdata: false}
+            - clone_id : {type: int, initialdata: false}
+            - num_clone : {type: int, initialdata: false}
+      
+        processes:
+            rien: 
+                - show('pond min', grpmin(pond))
+                - show('pond max', grpmax(pond))
+            expand:
+                - minpond: max(grpmin(pond),100)
+                # - show('la plus petite ponderation est:' grpmin(minpond))
+                - last_non_clone_id: grpmax(id)
+                - toclone: pond > 2*minpond
+                - num_dup: trunc(pond/minpond)-1
+                - num_clone: 0
+                # clone all menages with a weight > 1
+                - clone_id: clone(toclone,'num_dup','father', numerotation='num_clone')
+                
+                # modify the weight:
+                # for the original menages: (weight + 1) / 2
+                # for the new (cloned) menage: weight / 2
+                - is_clone: id > last_non_clone_id
+                - pond: if(toclone,
+                             pond/(num_dup+1),
+                             pond)
+ 
+
+simulation:
+    init:
+        - person: [rien]
+        - person: [expand]
+    processes:
+        - person: [rien]   
+    input:
+        file: lien.h5
+
+    output:
+        file: lien_expanded.h5
+
+    start_period: 2010   # first simulated period
+    periods: 1
