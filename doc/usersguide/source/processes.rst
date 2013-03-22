@@ -138,12 +138,13 @@ block you specify the *ageing*-process if you want to update *age* and
 By using procedures, you can actually make *building blocks* or modules in the
 model.
 
-Temporary variables
--------------------
+Local (temporary) variables
+---------------------------
 
 Temporary variables defined/computed within a procedure are local to that
 procedure: they are only valid within that procedure. If you want to pass
-variables between procedures you have to define them in the **fields** section.
+variables between procedures you have to make them global by defining them in
+the **fields** section.
 
 *(bad) example* ::
 
@@ -182,15 +183,13 @@ Actions inside procedures don't even need a process name.
 Expressions
 ===========
 
-Expressions can either change a field, either change the database by adding or
-removing an entity. In that section, we will study firt expression that change
-a fields and then, the called life-cycle function. 
+Expressions can either compute new values for existing individuals, or change
+the number of individuals by using the so-called life-cycle functions. 
 
-For the first ones, be always carefull not to change a field type, between a
-boolean and an int for example. 
+.. index:: simple expressions
 
-Deterministic changes
----------------------
+simple expressions
+------------------
 
 Let us start with a simple increment; the following process increases the value
 of a variable by one each simulation period.
@@ -200,11 +199,6 @@ of a variable by one each simulation period.
 The name of the process is *age* and what it does is increasing the variable
 *age* of each individual by one, each period.
 
-
-.. index:: simple expressions
-
-simple expressions
-~~~~~~~~~~~~~~~~~~
 
 - Arithmetic operators: +, -, \*, /, \** (exponent), % (modulo)
 
@@ -218,8 +212,13 @@ result has no decimal part), you can use the *trunc* function: ::
 - Comparison operators: <, <=, ==, !=, >=, >
 - Boolean operators: and, or, not
 
-Note that you have to use parentheses when you mix *boolean operators* with
-other operators. ::
+Note that starting with version 0.6, you do not need to use parentheses when
+you mix *boolean operators* with other operators. ::
+
+    inwork: workstate > 0 and workstate < 5
+    to_give_birth: not gender and age >= 15 and age <= 50
+    
+is now equivalent to:
 
     inwork: (workstate > 0) and (workstate < 5)
     to_give_birth: not gender and (age >= 15) and (age <= 50)
@@ -233,26 +232,79 @@ other operators. ::
                             5 * trunc(age / 5),
                             10 * trunc(age / 10))
 
-Note that an *if*-statement has always three arguments. If you want to leave a
-variable unchanged if a condition is not met, specify its value in the
+Note that the *if* functions always requires three arguments. If you want to
+leave a variable unchanged if a condition is not met, use the variable in the
 *expression_if_false* ::
 
     # retire people (set workstate = 9) when aged 65 or more
     workstate: if(age >= 65, 9, workstate)
 
 You can nest if-statements. The example below retires men (gender = True) over
-64 and women whose age equals at least the parameter/periodic global "WEMRA"
-(Women Retirement Age). ::
+64 and women over 61. ::
 
     workstate: if(gender,
                   if(age >= 65, 9, workstate),
-                  if(age >= WEMRA, 9, workstate))
+                  if(age >= 62, 9, workstate))
+    # could also be written like this:
+    workstate: if(age >= if(gender, 65, 62), 9, workstate)
+
+
+.. index:: globals usage
+.. _globals_usage:
+
+globals
+-------
+
+Globals can be used in expressions in any entity. LIAM2 currently supports
+two kinds of globals: tables and multi-dimensional arrays. They both need to
+be imported (see the :ref:`import_data` section) and declared (see
+the :ref:`globals_declaration` section) before they can be used.
+
+Globals tables come in two variety: those with a PERIOD column and those
+without. 
+
+The fields in a globals **table with a PERIOD column** can be used
+like normal (entity) fields except they need to be prefixed by the name of
+their table: ::
+
+    myvariable: mytable.MYINTFIELD * 10
+
+the value for INTFIELD is in fact the value INTFIELD has for the period
+currently being evaluated.
+
+There is a special case for the **periodic** table: its fields do not need
+to be prefixed by "periodic." (but they can be, if desired). ::
+ 
+    - retirement_age: if(gender, 65, WEMRA) 
+    - workstate: if(age >= retirement_age, 9, workstate)
+
+This changes the workstate of the individual to retired (9) if the age is
+higher than the required retirement age in that year.
+
+Another way to use globals from a table with a PERIOD column is to specify
+explicitly for which period you want them to be evaluated. This is done by
+using tablename.FIELDNAME[period_expr], where period_expr can be any
+expression yielding a valid period value. Here are a few artificial
+examples: ::
+
+    workstate: if(age >= WEMRA[2010], 9, workstate)
+    workstate: if(age >= WEMRA[period - 1], 9, workstate)
+    workstate: if(age >= WEMRA[year_of_birth + 60], 9, workstate)
+
+Globals **tables without a PERIOD column** can only be used with the second
+syntax, and in that case LIAM2 will not automatically subtract the
+"base period" from the index, which means that to access a particular row,
+you have to use its row index (0 based). 
+
+Globals **arrays** can simply be used like a normal field:
+
+    myvariable: MYARRAY * 2
 
 
 .. index:: mathematical functions
 
 mathematical functions
-~~~~~~~~~~~~~~~~~~~~~~
+----------------------
 
 - log(expr): natural logarithm (ln)
 - exp(expr): exponential
@@ -269,22 +321,22 @@ mathematical functions
            grpgini, aggregate functions
 
 aggregate functions
-~~~~~~~~~~~~~~~~~~~
+-------------------
 
 - grpcount([condition]): count the objects in the entity. If filter is given,
                          only count the ones satisfying the filter.
-- grpsum(expr[, filter=condition]): sum the expression
-- grpavg(expr[, filter=condition]): average
-- grpstd(expr[, filter=condition]): standard deviation
-- grpmax(expr[, filter=condition]), grpmin(expr[, filter=condition]): max or min
-- grpmedian(expr[, filter=condition]): median
-- grppercentile(expr, percent[, filter=condition]): percentile
-- grpgini(expr[, filter=condition]): gini
+- grpsum(expr[, filter=condition][, skip_na=True]): sum the expression
+- grpavg(expr[, filter=condition][, skip_na=True]): average
+- grpstd(expr[, filter=condition][, skip_na=True]): standard deviation
+- grpmin(expr[, filter=condition][, skip_na=True]): min
+- grpmax(expr[, filter=condition][, skip_na=True]): max
+- grpmedian(expr[, filter=condition][, skip_na=True]): median
+- grppercentile(expr, percent[, filter=condition][, skip_na=True]): percentile
+- grpgini(expr[, filter=condition][, skip_na=True]): gini
 
 **grpsum** sums any expression over all the individuals of the current entity.
 For example *grpsum(earnings)* will produce the sum of the earnings of all
-persons in the sample. The expression *grpsum(nch0_11)* will
-result in the total number of children 0 to 11 in the sample.
+persons in the sample.
 
 **grpcount** counts the number of individuals in the current entity, optionally
 satisfying a (boolean) condition. For example, *grpcount(gender)* will produce
@@ -305,7 +357,7 @@ is a boolean variable (eg. grpcount(ISWIDOW) == grpsum(ISWIDOW)).
 .. index:: countlink, sumlink, avglink, minlink, maxlink
 
 link functions
-~~~~~~~~~~~~~~
+--------------
 (one2many links)
 
 - countlink(link[, filter])
@@ -333,37 +385,57 @@ link functions
 .. index:: temporal functions, lag, value_for_period, duration, tavg, tsum
 
 temporal functions
-~~~~~~~~~~~~~~~~~~
+------------------
 
-- lag: value at previous period
-- value_for_period: value at specific period
-- duration: number of consecutive period the expression was True
-- tavg: average of an expression since the individual was created
-- tsum: sum of an expression since the individual was created
+- lag(expr[, num_periods][, missing=value): value at previous period.
 
-If an item did not exist at that period, the returned value is -1 for a
-int-field, nan for a float or False for a boolean. You can overide this
-behaviour when you specify the *missing* parameter.
+  **expr**: any expression.
+  
+  **num_periods**: optional argument specifying the number of periods to go
+  back to. This can be either a constant or a scalar expression. Defaults to 1. 
 
-*example* ::
+  **missing**: the value to return for individuals which were not present in
+  the past period. By default, it returns the missing value corresponding to
+  the type of the expression: -1 for an integer expression, nan for a float
+  or False for a boolean.
 
-    lag(age, missing=0) # the age each person had last year, 0 if newborn
+  *example* ::
+
     grpavg(lag(age))    # average age that the current population had last year
     lag(grpavg(age))    # average age of the population of last year
+    lag(age, 2)         # the age each person had two years ago (-1 for
+                        # newborns)
+    lag(lag(age))       # this is equivalent (but slightly less efficient)
+    lag(age, missing=0) # the age each person had last year, 0 if newborn
+
+- value_for_period(expr, period[, missing=value]): value at a specific period
+
+  *example* ::
 
     value_for_period(inwork and not male, 2002)
+
+- duration(expr): number of consecutive period the expression was True
+
+  *examples* ::
 
     duration(inwork and (earnings > 2000))
     duration(educationlevel == 4)
 
+- tavg(expr): average of an expression since the individual was created
+
+  *example* ::
+
     tavg(income)
+
+- tsum(expr): sum of an expression since the individual was created
+
 
 .. index:: random, uniform, normal, randint
 
 random functions
-~~~~~~~~~~~~~~~~
+----------------
 
-- uniform: random numbers with a uniform distribution
+- uniform: random numbers with a uniform distribution [0,1)
 - normal: random numbers with a normal distribution
 - randint: random integers between bounds
 
@@ -373,338 +445,506 @@ random functions
     normal(loc=0.0, scale=grpstd(errsal))
     randint(0, 10)
 
-Stochastic changes I: probabilistic simulation
-----------------------------------------------
-
 .. index:: choice
 
 choice
 ~~~~~~
 
-Monte Carlo or probabilistic simulation is a method for iteratively evaluating a deterministic model using sets of random numbers
-as inputs. In microsimulation, the technique is used to simulate changes of state dependent variables. Take the simplest example:
-suppose that we have an exogenous probability of an event happening, P(x=1), or not P(x=0). Then draw a random number u from an
-uniform (0,1) distribution. If, for individual i, ui<p(1), then xi=1. If not, then xi=0. The expected occurrences of x after,
-say, 100 runs is then P(x=1)*100 and the expected value is 1xP(1)+0xP(0)=P(1). This type of simulation hinges on the
-confrontation between a random variable and an exogenous probability. In the current version of LIAM 2, it is not possible to
-combine a choice with alignment.
+Monte Carlo or probabilistic simulation is a method for iteratively evaluating
+a deterministic model using sets of random numbers as inputs. In
+microsimulation, the technique is used to simulate changes of state dependent
+variables. Take the simplest example:
+suppose that we have an exogenous probability of an event happening, P(x=1),
+or not P(x=0). Then draw a random number u from an uniform [0,1) distribution.
+If, for individual i, ui < P(x=1), then xi=1.
+If not, then xi=0.
+The expected occurrences of x after, say, 100 runs is then P(x=1) * 100 and
+the expected value is 1xP(1)+0xP(0)=P(1). This type of simulation hinges on the
+confrontation between a random variable and an exogenous probability.
 
-In LIAM 2, such a probabilistic simulation is called a **choice** process. Suppose i=1..n choice options, each with a probability
-prob_option_i. The choice process then has the following form: ::
+In LIAM 2, such a probabilistic simulation is called a **choice** process.
+Suppose i=1..n choice options, each with a probability prob_option_i. A
+choice expression then has the following form: ::
 
     choice([option_1, option_2, ..., option_n],
            [prob_option_1, prob_option_2, ..., prob_option_n])
 
-Note that both lists of options and pertaining probabilities are between []’s. Also, the variable containing the options can be
-of any numeric type.
+Note that both the list of options and their probabilities are between []’s.
+The options can be of any numeric type.
 
-A simple example of a choice process is the simulation of the gender of newborns (51% males and 49% females), as such: ::
+A simple example of a process using a choice expression is the simulation of
+the gender of newborns (51% males and 49% females), as such: ::
 
-    gender=choice([True, False], [0.51, 0.49])
+    gender: choice([True, False], [0.51, 0.49])
 
-The code below illustrates a more complex example of a choice process (called *collar process*). Suppose we want to
-simulate the work status (collar=1 (blue collar worker), white collar worker) for all working individuals. We however have
-knowledge one’s level of education (education_level=2, 3, 4).
+In the current version of LIAM 2, it is not possible to combine a choice with
+alignment.
 
-The process *collar_process* has collar as the key endogenous variable and has four sub-processes.
+Here is a more complex example of a process using choice. Suppose we want to
+simulate the work status (blue collar worker or white collar worker) for all
+working individuals. We want to assign 1 or 2 to their collar variable based
+on their sex and level of education (education_level=2, 3, 4). We could write
+our process as follow: ::
 
-The first sub-process defines a local variable filter-bw, which will be used to separate those that the procedure should apply
-to. These are all those that do not have a value for collar, and who are working, or who are in education or unemployed, which
-means that they potentially could work.
+    collar_process:
+        - no_collar: WORKING and collar == -1
+        - collar: if(no_collar and (education_level == 2),
+                     if(gender,
+                        choice([1, 2], [0.836, 0.164]),
+                        choice([1, 2], [0.687, 0.313]) ),
+                     collar)
+        - collar: if(no_collar and (education_level == 3),
+                     if(gender,
+                        choice([1, 2], [0.643, 1 - 0.643]),
+                        choice([1, 2], [0.313, 1 - 0.313]) ),
+                     collar)
+        - collar: if(no_collar and (education_level == 4),
+                     if(gender,
+                        choice([1, 2], [0.082, 1 - 0.082]),
+                        choice([1, 2], [0.039, 1 - 0.039]) ),
+                     collar)
 
-The next three "collar" sub-processes simulate whether one is a white or blue collar worker, depending on the
-level of education. If one meets the above filter_bw and has the lowest educational attainment level, then one has a
-probability of about 84% (men) and 69% (women) of being a blue collar worker. If one has ‘education_level’ equal to 3, the
-probability of being a blue collar worker is of course lower (64% for men and 31% for women), and the probability of becoming a
-blue collar worker is lowest (8 and 4%, respectively) for those having the highest educational attainment level. ::
+The procedure *collar_process* has collar as the key endogenous variable and
+has four sub-processes.
 
-    collar_process:  # working, in education, unemployed or other inactive
-        - filter_bw: (
-                       ((workstate > 0) and (workstate < 7))
-                       or
-                       (workstate == 10)
-                      ) and (collar == 0)
-        - collar: if(filter_bw and (education_level == 2),
-                      if(gender,
-                         choice([1, 2], [0.83565, 0.16435]),
-                         choice([1, 2], [0.68684, 0.31316]) ),
-                      collar)
-        - collar: if(filter_bw and (education_level == 3),
-                      if(gender,
-                         choice([1, 2], [0.6427, 1 - 0.6427]),
-                         choice([1, 2], [0.31278, 1 - 0.31278]) ),
-                      collar)
-        - collar: if(filter_bw and (education_level == 4),
-                      if(gender,
-                         choice([1, 2], [0.0822, 1 - 0.0822]),
-                         choice([1, 2], [0.0386, 1 - 0.0386]) ),
-                      collar)
+The first sub-process defines a local variable no_collar, which will be used
+to select those that the procedure should apply to. These are all the workers
+that do not have a value for collar.
+
+The next three sub-processes simulate the actual collar variable. If
+one meets the above *no_collar* filter and has the lowest level of education
+(2), then one has a probability of about 83.6% (men) and 68.7% (women) of
+being a blue collar worker. If one has "education_level" equal to 3, the
+probability of being a blue collar worker is lower (64.3% for men and
+31.3% for women), etc.
 
 .. index:: logit, alignment
 
-Stochastic changes II: behavioural equations
---------------------------------------------
-
+Regressions
+-----------
 
 .. index:: logit_score
 
 logit_score
 ~~~~~~~~~~~
 
-The logit of a number p between 0 and 1 is given by the formula:
+The logit of a number p between 0 and 1 is given by the formula: ::
 
-	logit(p) = log(p / p-1)
+    logit(p) = log(p / (1 - p))
 
-The idea here is to transform a probability stuck between 0 and 1 in a any 
-real number. The inverse function in even more important as she take any real
-number in order to make a probability of it.
-The inverse function of logit is the logistic function : 
-	
-	logistic(a) = 1 / ( 1+exp(-a) )  
+Its inverse, the logistic function has the interesting property that it can
+convert any real number into a probability. ::
 
-The logit_score function applied to a returns basically logistic(a)
-but in addition, it adds a random part which will be explained in the 
-align section. 
+    logistic(a) = 1 / (1 + exp(-a))
 
-In fact, logit_score, draw an random number between 0 and 1 and return : 
+The logit_score function is a logistic with a random part: ::
 
-	logit_score(a) = logistic( a - logit (u) )
-	
-That expression is very useful in behavioural equation. Note that due to the random draw, the logit_score p*i is in between -1 and 1.
+    logit_score(a) = logistic(a - logit(u))
 
-We will see below that the logit_regr function can often be used as a shortcut and restict the use of logit_score. However, 
-using logit_score is better for readability: ::
+where *u* is a random number from an uniform distribution [0, 1). 
 
-        name_process:
-            # initialise the score to -1
-            - score_variable: -1
+*logit_score* is very useful in behavioural equations. A behavioural equation
+starts by creating a score that reflects the risk p*i of an event occuring.
+A typical usage is as follow: ::
 
-            # first condition
-            - score_variable: if(condition_1,
-                                 logit_score(logit_expr_1),
-                                 score_variable)
-            # second condition
-            - score_variable: if(condition_2,
-                                 logit_score(logit_expr_2),
-                                 score_variable)
+    - score_variable: if(condition_1,
+                         logit_score(logit_expr_1),
+                         if(condition_2,
+                            logit_score(logit_expr_2),
+                            -1))
 
-            # ... other conditions ...
-            
-            # to be continued...
+However, the nested structure can make things less readable if you have many
+different conditions. In that case, one would prefer the following longer
+form: :: 
 
+    process_name:
+        # initialise the score to -1
+        - score_variable: -1
 
-A behavioural equation starts by creating a score that reflects the event risk p*i. 
-In a first sub-process, a variable *score_variable* is set equal to -1, because this makes it highly
-unlikely that the event will happen to those not included in the conditions for which the logit is applied. As said before, -1
-is the lowest value possible for logit_score. 
-Next, subject to conditions *condition_1* and *condition_2*, this score is simulated on the basis of estimated logits. The specification
-*logit_score* results in the logit not returning a Boolean but instead a score.
+        # first condition
+        - score_variable: if(condition_1,
+                             logit_score(logit_expr_1),
+                             score_variable)
+        # second condition
+        - score_variable: if(condition_2,
+                             logit_score(logit_expr_2),
+                             score_variable)
 
-Note that by specifying the endogenous variable *score_variable* without any transformations under the ‘ELSE’ condition makes
-sure that the score variable is not manipulated by a sub-process it does not pertain to.
+        # ... other conditions ...
 
+In a first sub-process, a variable *score_variable* is set equal to -1,
+because this makes it highly unlikely that the event will happen to those not
+included in the conditions for which the logit is applied.
+
+Next, subject to conditions *condition_1* and *condition_2*, this score (risk)
+is simulated on the basis of estimated logits. Note that by specifying the
+endogenous variable *score_variable* without any transformation in the "else"
+conditions of the if functions makes sure that the score variable is not
+manipulated by a sub-process it does not pertain to.
+
+When the score is known, it can be either used as-is: ::
+
+    - event_happened: uniform() < score_variable
+
+or in combination with an alignment (see below).
 
 .. index:: align, take, leave
 
 align
 ~~~~~
 
-After this step, the score is known and this is the input for the alignment process. 
- suppose that we want the proportional occurrences of the event to be equal to an overall proportion X. In that
-case, the variable p*i sets the rank of individual i according to the risk that the relevant event will happen. Then only
-the first X*N individuals in the ranking will experience the event. This process is known as ‘alignment’.
-To know more about the alignment process reading Evaluating Alignment Methods in Dynamic Microsimulation Models, 
-by Li and O'Donoghue is advised. 
-The methodology used for now by Liam2 is to draw the highest scores in order to have the good transition number. Introduction of 
-a random term let the possibility to a small but non zero probability to be drawn even if there is bigger ones. 
+Now that we have computed a score (risk) for an event happening, we might want
+to use alignment so the number of events occuring per category matches a
+proportion defined externaly. 
 
-The general structure to run an alignment in Liam2 takes that form : :: 
+There are different ways to choose which individuals are taken. The methodology
+used for now by LIAM 2 is called "alignment by sorting", that is, for each
+category, the N individuals with the highest scores are selected.
 
-    align(score_variable,
-          filter=conditions,
-          [take=conditions,]
-          [leave=conditions,]
-          fname='name.csv')
-          
-The file *name.csv* contains the alignment data.
+The score computation is not done internally by the align() function, but is
+rather computed by an expression given by the modeller. One will usually use
+logit_score() to compute it, but it can be computed in any other way a
+modeller choose.
 
- Suppose -as is mostly the case- that alignment data exists for men and women separately. Then the alignment process starts 
- by a *if* to gender. Next comes the align command itself. So the code in previous section could be continued as follows : ::
+To know more about the alignment process reading "Evaluating Alignment Methods
+in Dynamic Microsimulation Models", by Li and O'Donoghue is advised. 
+
+An alignment expression takes the following general form: ::
+
+    align(score,
+          proportions
+          [, filter=conditions]
+          [, take=conditions]
+          [, leave=conditions]
+          [, expressions=expressions]
+          [, possible_values=pvalues]
+          [, frac_need="uniform"|"round"|"cutoff"])
+
+For example, it could look like: ::
+
+    - unemp: align(unemp_score,
+                   'al_p_unemployed_m.csv',
+                   filter=not ISINWORK and (age > 15) and (age < 65), 
+                   take=ISUNEMPLOYED,
+                   leave=ISSTUDENT or ISRETIRED)
+
+Now let us examine each argument in turn:
+
+ * **score**: it must be an expression (or a simple variable) returning 
+   a numerical value. It will be used to rank individuals. One will usually
+   use logit_score() to compute the score, but it can be computed in any other
+   way a modeller choose. Note that the score is not modified in any way
+   within the align() function, so if one wants a random factor, it should be
+   added manually (or through the use of a function like logit_score which
+   includes one).
+
+ * **proportions**: the target proportions for each category. This argument can
+   take many forms. The most common one will probably be a
+   string holding the name of a file containing the alignment data (like in
+   the example above) but it can be any of the following:
+   
+    + a single scalar, for aligning with a constant proportion.
+    + a list of scalars, for aligning with constant proportions per category.
+    + an expression returning a single scalar.
+    + an expression returning an n-dimensional array. expressions and
+      possible values will be retrieved from that array, so you can simply
+      use: ::
+
+        align(score_expr, array_expr)
+
+    + a list of expressions returning scalars [expr1, expr2].
+    + a string treated as a filename. That file should be in the "array"
+      format described in the :ref:`import_data` section. In that case, the
+      proportions, expressions (column names) and possible values are read
+      from that file. The "fname" argument which used to be the way to define
+      this is still supported for backward compatibility.
+
+      There is no technical restriction on names for files containing alignment
+      data but, by convention, they usually use the following pattern: start
+      with the prefix *al_* followed by the name of the endogenous variable
+      and a suffix *_m* or *_f*, depending on gender.
+
+ * **filter**: an expression specifying which individuals to taken into account
+   for the alignment. Note that if the align() function is used inside an
+   *if()* expression, its filter is adjusted accordingly ("anded" with the
+   filter of the if() expression). For example: ::
+   
+     - aligned: if(condition,
+                   align(score_expr1, 'filename1.csv'),
+                   align(score_expr2, 'filename2.csv'))
+   
+   is equivalent to: ::
+           
+     - aligned1: align(score_expr1, 'filename1.csv', filter=condition)
+     - aligned2: align(score_expr2, 'filename2.csv', filter=not condition)
+     - aligned: if(condition, aligned1, aligned2)
+
+ * **take**: an expression specifying individuals which should always be
+   selected, regardless of their score. This argument should be used with care
+   as those individuals will be selected unconditionally, even if that means
+   overflowing the number of individuals desired to satisfy the alignment.
+   
+   Suppose that the alignment specifies that 10 individuals should experience
+   a certain event, and that there are 3 individuals who meet the conditions
+   specified in the *take*. Then these 3 individuals will be selected a priori
+   (irrespective of their score) and the alignment process will select the
+   remaining 7 candidates from the rest of the sample.
+
+   A "softer" alternative can be easily achieved by setting a very high score
+   for individuals to be taken first.
+  
+ * **leave**: an expression specifying individuals which should never be
+   selected, regardless of their score. This argument should be used with care
+   as those individuals will *never* be selected, even if that cause the target
+   number of individuals for some categories to not be reached.
+
+   A "softer" alternative can be easily achieved by setting a very low score
+   for individuals to be taken last.
+
+   Note that even if the score for an individual is -1 (or any other negative
+   number), it *can* still be selected by the alignment expression. This
+   happens when there are not enough candidates (selected by the filter) to
+   meet the alignment needs.
  
-            # do alignment based on the scores calculated above
-            - name_endogenous_variable:
-                if(condition,
+ * **expressions**: specify the expressions used to partition the individuals
+   into the different alignment categories. If proportions is a file name, the
+   column names declared in the file are used by default, but they can be
+   overridden using this argument. For example: ::
+   
+     align(0.0, 'al_p_dead.csv', expressions=[gender, age + 1])
+
+ * **possible_values**: specify the different values for each of the
+   expressions in the expressions argument that should be evaluated. The
+   combination of the different lists of possible values will form all the
+   alignment categories. For example: ::
+
+     align(0.0, 
+           proportions=[0.1, 0.2, 0.3, 0.4],
+           expressions=[gender, age < 50],
+           possible_values=[[False, True], [False, True]])
+
+ * **frac_need**: control how "fractional needs" are handled. This argument
+   can take any of three values: "uniform" (default), "cutoff" or "round".
+
+    + "uniform" draws a random number (u) from an uniform distribution and
+      adds one individual if u < fractional_need. "uniform" is the default
+      behavior.
+    + "round" simply rounds needs to the nearest integer. In other words, one
+      individual is added for a category if the fractional need for that
+      category is >= 0.5.
+    + "cutoff" tries to match the total need as closely as possible (at the
+      expense of a slight loss of precision for individual categories) by 
+      searching for the "cutoff point" that yields: ::
+
+        count(frac_need >= cutoff) == sum(frac_need)
+
+In practice alignment data is often separate for men and women. In that case,
+one will usually use the following form: ::
+
+    - variable: if(condition,
                    if(gender,
-                      align(score_variable,
-                            [take=conditions,]
-                            [leave=conditions,]
-                            fname='filename_m.csv'),
-                      align(score_variable,
-                            [take=conditions,]
-                            [leave=conditions,]
-                            fname='filename_f.csv')),
+                      align(score_expr, 'filename_m.csv'),
+                      align(score_expr, 'filename_f.csv')),
                    False)
 
- A standard setup is that the file starts with the prefix *al_* followed by
-the name of the endogenous variable and a suffix *_m* or *_f*, depending on gender.
+Since LIAM2 supports alignment with any number of dimensions, one could also
+merge both data files in a single file with one more dimension and use a 
+single align() expression: ::
 
-The optional *take* and *leave* commands forces inclusion or exclusion of objects with specified characteristics in
-the selection of the event. The individuals with variables specified in the *take* command will a priori be selected for the
-event. Suppose that the alignment specifies that 10 individuals should experience a certain event, and that there are 3
-individuals who meet the conditions specified in the *take*. Then these 3 individuals will be selected a priori and the
-alignment process will select the remaining 7 candidates from the rest of the sample. The *leave* command works the other
-way around: those who match the condition in that statement, are a priori excluded from the event happening. The *take* and
-*leave* are absolute conditions, which mean that the individuals meeting these conditions will always (*take*) or never
-(*leave*) experience the event.
+    - variable: if(condition,
+                   align(score_expr, 'filename_m_and_f.csv'),
+                   False)
+    # or even
+    - variable: align(score_expr, 'filename_m_and_f.csv', filter=condition)
 
-Their *soft* counterparts can easily be included by manipulating the score of individuals.
-If this score is set to a strong positive or negative number, then the individual will a priori have a high of low
-probability of the event happening. These *soft take* and ‘*soft leave*’s will implement a priority order in the sample of
-individuals, but will not under all circumstances conditionally include or exclude.
+In the example below describes the process of getting (or keeping) a job: ::
 
-Note that even if the score is -1 an item can be selected by the alignment procedure. This happens when there are not enough
-candidates (selected by the score) to meet the alignment needs.
+    inwork:
+        - work_score: -1
+        # men
+        - work_score: if(ISMALE and ACTIVEAGE and ISINWORK,
+                         logit_score(-0.196599 * age + 0.0086552 * age **2 - 0.000988 * age **3
+                                     + 0.1892796 * ISMARRIED + 3.554612),
+                         work_score)
+        - work_score: if(ISMALE and ACTIVEAGE and (ISUNEMPLOYED or ISOTHERINACTIVE),
+                         logit_score(0.9780908 * age - 0.0261765 * age **2 + 0.000199 * age **3
+                                     - 12.39108),
+                         work_score)
+        # women
+        - work_score: if(ISFEMALE and ACTIVEAGE and ISINWORK,
+                         logit_score(-0.2740483 * age + 0.0109883 * age **2 - 0.0001159 * age **3
+                                     - 0.0906834 * ISMARRIED + 3.648706),
+                         work_score)
+        - work_score: if(ISFEMALE and ACTIVEAGE and (ISUNEMPLOYED or ISOTHERINACTIVE),
+                         logit_score(0.8217638 * age - 0.0219761 * age **2 + 0.000166 * age **3
+                                     - 0.5590975 * ISMARRIED - 10.48043),
+                         work_score)
+    
+        - work: if(ACTIVEAGE,
+                   if(ISMALE,
+                      align(work_score, 'al_p_inwork_m.csv',
+                            leave=ISSTUDENT or ISRETIRED),
+                      align(work_score, 'al_p_inwork_f.csv',
+                            leave=ISSTUDENT or ISRETIRED)),
+                   False)
 
-The below application describes the process of being (or remaining) a wage-earner or employee. It illustrates a *soft
-leave* by setting the a priori score variable *wage_earner_score* to -1. This makes sure that the a priori
-selection probability for those not specified in the process is very low (but not zero, as in the case of *leave*
-conditions).
+The first sub process illustrates a "*soft leave*" by setting the score
+variable *work_score* to -1. This makes sure that the a priori selection
+probability is very low (but not zero, as in the case of *leave* conditions)
+for those who satisfy the filter of the alignment but for which a score is not
+explicitly specified the subsequent processes. 
 
-.. 
-Next come three sub processes setting a couple of common conditions, in the form of local (temporary) variables. These three sub-
-processes are followed by six subsequent *if* conditions, separating the various behavioural equations to the sub-sample
-they pertain to. The first three sub conditions pertain to women and describe the probability of being a wage-earner from in
-work and employee previous year (1) from in work but not employee previous year (2), and from not in work previous year
-(3). The conditions 4 to 6 describe the same transitions but for women. ::
+Next come four *if* conditions, separating the various behavioural equations
+to the sub-sample they pertain to. The first two conditions pertain to men
+and respectively describe the probability of keeping a job and getting a job.
+The next two conditions describe the same transitions but for women.
+
+The last sub-process describes the alignment process itself. Alignment is
+applied to individuals between the age of 15 and 65. The input-files of the
+alignment process are 'al_p_inwork_m.csv' and 'al_p_inwork_f.csv'. The
+alignment process uses as input the scores simulated previously, and the
+information in the alignment files and sets the boolean variable *work*.
+No "take" or "leave" conditions are used in this case.
 
 
-    wage_earner_process:
-        - wage_earner_score: -1
-        - lag_public: lag((workstate == 2) or (workstate == 3))
-        - inwork: (workstate > 0) and (workstate < 5)
-        - lag_inwork: lag((workstate > 0) and (workstate < 5))
-        - men_inwork: gender and (age > 15) and (age < 65) and inwork
+.. index:: align_abs
 
-        # === MEN ===
-        # Probability of being employee from in work and employee previous year
-        - wage_earner_score:
-            if(men_inwork and ((lag(workstate) == 1) or (lag(workstate) == 2)),
-               logit_score(0.0346714 * age + 0.9037688 * (collar == 1)
-                           - 0.2366162 * (civilstate == 3) + 2.110479),
-               wage_earner_score)
-        # Probability of becoming employee from in work but not employee
-        # previous year
-        - wage_earner_score:
-            if(men_inwork and ((lag(workstate) != 1) and (lag(workstate) != 2)),
-               logit_score(-0.1846511 * age - 0.001445 * age **2
-                           + 0.4045586 * (collar == 1) + 0.913027),
-               wage_earner_score)
-        # Probability of becoming employee from not in work previous year
-        - wage_earner_score:
-            if(men_inwork and (lag(workstate) > 4),
-               logit_score(-0.0485428 * age + 1.1236 * (collar == 1) + 2.761359),
-               wage_earner_score)
+align_abs
+~~~~~~~~~
 
-        # === WOMEN ===
-        - women_inwork: not gender and (age > 15) and (age < 65) and inwork
+align_abs is equivalent to align(), except that it aligns to absolute numbers
+instead of proportions. It also supports a few additional arguments to work 
+on a **linked entity**.
 
-        # Probability of being employee from in work and employee previous year
-        - wage_earner_score:
-            if(women_inwork and ((lag(workstate) == 1) or (lag(workstate) == 2)),
-               logit_score(-1.179012 * age + 0.0305389 * age **2
-                           - 0.0002454 * age **3
-                           - 0.3585987 * (collar == 1) + 17.91888),
-               wage_earner_score)
-        # Probability of becoming employee from in work but not employee
-        # previous year
-        - wage_earner_score:
-            if(women_inwork and ((lag(workstate) != 1) and (lag(workstate) != 2)),
-               logit_score(-0.8362935 * age + 0.0189809 * age **2
-                           - 0.000152 * age **3 - 0.6167602 * (collar == 1)
-                           + 0.6092558 * (civilstate == 3) + 9.152145),
-               wage_earner_score)
-        # Probability of becoming employee from not in work previous year
-        - wage_earner_score:
-            if(women_inwork and (lag(workstate) > 4),
-               logit_score(-0.6177936 * age + 0.0170716 * age **2
-                           - 0.0001582 * age**3 + 9.388913),
-               wage_earner_score)
+The general form of align_abs is : ::
 
-        - wage_earner: if((age > 15) and (age < 65) and inwork,
-                           if(gender,
-                              align(wage_earner_score,
-                                    fname='al_p_wage_earner_m.csv'),
-                              align(wage_earner_score,
-                                    fname='al_p_wage_earner_f.csv')),
-                           False)
+    align_abs(score,
+              need,
+              [, filter=conditions]
+              [, take=conditions]
+              [, leave=conditions]
+              [, expressions=expressions]
+              [, possible_values=pvalues]
+              [, frac_need="uniform"|"round"|"cutoff"]
+              [, link=link_name]
+              [, secondary_axis=column_name]
+              [, errors="default"|"carry"])
 
-The last sub-procedure describes the alignment process. Alignment is applied to individuals between the age of 15 and 65 who
-are in work. The reason for this is that those who are not working obviously cannot be working as a wage-earner. The input-
-files of the alignment process are 'al_p_wage_earner_m.csv' and 'al_p_wage_earner_f.csv'. The alignment process sets the
-Boolean *wage earner*, and uses as input the scores simulated previously, and the information it takes from the alignment
-files. No ‘take’ or ‘leave’ conditions are specified in this case.
+In addition to all the arguments supported by *align()*, *align_abs()* also
+supports an optional "link" argument, which makes it work on a linked entity.
 
-Note that the population to align is the population specified in the first condition, here *(age>15) and (age<65) and (inwork)* and not the
-whole population.
+Here is a description of the arguments specific to align_abs:
+
+  * **link**: must be the name of a one2many link. When the link argument is
+    used, the groups (given by the alignment file or in the *expressions*
+    argument) are evaluated on the linked entity and the needs are expressed
+    in terms of that linked entity. When the link argument is in effect,
+    align_abs uses the "Chenard" algorithm.
+
+    This can be used, for example, to take as many *households* as necessary
+    trying to get as close as possible to a particular distribution of
+    *persons*. 
+
+  * **secondary_axis**: name of an axis which will influence rel_need when the
+    subtotal for that axis is exceeded. See total_by_sex in Chenard. 
+    *secondary_axis* can only be used in combination with the link argument
+    and it *must* be one of the alignment columns.
+
+  * **errors**: if set to 'carry', the error for a period (difference between 
+    the number of individuals aligned and the target for each category) is
+    stored and added to the target for the next period.
+    In the current version of LIAM2, *errors* can only be used in combination
+    with the *link* argument.
+
+*example* ::
+
+    test_align_link:
+        # this is a procedure defined at the level of households
+        - num_persons: countlink(persons)
+        - total_population: grpsum(num_persons)
+
+        # MIG_PERCENT is a simple float periodic global
+        - num_migrants: total_population * MIG_PERCENT
+
+        # MIG is a 3d array: age - gender - period but we want only the
+        # 2d array for this period.
+        # currently, we need to manually compute the index (0-based)
+        # for the current period in the array. We know the first
+        # period in our array is 2000, so the index for the current
+        # period is: "period - 2000"
+        # period is the last dimension of the array and we do not
+        # want to modify other dimensions, so we use ":" for those
+        # dimensions.
+        - mig_period: MIG[:,:,period - 2000]
+
+        # Distribute total desired migrants, by age and gender
+        - need: num_migrants * mig_period
+        
+        # households have a 50% chance to be candidate for immigration
+        - is_candidate: uniform() < 0.5
+
+        # apply alignment, using the number of persons in each household
+        # as a score, so that households with more persons are tried first
+        # as this gives better results.
+        - aligned: align_abs(num_persons, need,
+                             filter=is_candidate,
+                             link=persons, secondary_axis=gender,
+                             errors='carry')
 
 .. index:: logit_regr
 
 logit_regr
 ~~~~~~~~~~
 
-The general use of logit_regr takes this form :  ::
+logit_regr is a shortcut form to call logit_score and "evaluate whether the
+event happened" in a single function. Thus, the function returns a boolean:
+True for individuals which are selected, False for all others.
+Its general form is: :: 
 
-    - single_align: logit_regr(<logit arguments>,
-                               [filter=<filter arguments>,
-                               align='name.csv'])
+  - aligned: logit_regr(expression,
+                        [, filter=conditions]
+                        [, align=proportions])
 
-That function returns a boolean with value 1 if drawn.
+The *align* argument supports all the same formats than the *proportions*
+argument of align(): filename, percentage, list of values, ...
 
-The first step of the logit_regr function is to evaluate the logit_score.
-This probability consists of a given deterministic element (as before), completed by a
-stochastic element, u, which is finally a log-normally distributed random variable.
+Evaluation whether the event happens is done differently whether the align
+argument is used or not. If alignment is used, logit_regr is equivalent to: ::
 
-Without algin argument, the condition for the event occurring is p*i > 0.5.
+  - aligned: align(logit_score(expression), proportions, filter=conditions)
 
-In case of one logit with one alignment process  the setup becomes: ::
+Without align argument, the condition for the event occurring is p*i > 0.5,
+which means that in this form, logit_regr is equivalent to: ::
 
-    * logit_regr(expr[, filter=None, align='filename'])
-    * logit_regr(expr[, filter=None, align=percentage])
-
-In that case, the logit_regr function is equivalent to align(logit_score(expr)[, filter=None, align='filename.csv']) 
-or align(logit_score(expr)[, filter=None, align=percentage]) 
-
+  - aligned: if(conditions, logit_score(expression) > 0.5, False)
 
 *example* ::
 
-    birth:
-        - to_give_birth: logit_regr(0.0,
-                                    filter=FEMALE and
-                                           (age >= 15) and (age <= 50),
-                                    align='al_p_birth.csv')
+  - to_give_birth: logit_regr(0.0,
+                              filter=FEMALE and (age >= 15) and (age <= 50),
+                              align='al_p_birth.csv')
 
-The above generic setup describes the situation where one logit pertains to one
-alignment process.
 
-other : TODO
-~~~~~~~~~~
+other regressions
+~~~~~~~~~~~~~~~~~
+
 - Continuous (expr + normal(0, 1) * mult + error_var): cont_regr(expr[, filter=None, mult=0.0, error_var=None])
 - Clipped continuous (always positive): clip_regr(expr[, filter=None, mult=0.0, error_var=None])
 - Log continuous (exponential of continuous): log_regr(expr[, filter=None, mult=0.0, error_var=None])
 
 
-
 .. index:: matching
 
-Matching functions
-------------------
+Matching function
+-----------------
 
 **matching**: (aka Marriage market) matches individuals from set 1 with
 individuals from set 2. For each individual in set 1 following a particular
-order (given by the expression in the *orderby* argument), the function computes
-the score of all (unmatched) individuals in set 2 and take the best scoring one.
+order (given by the expression in the *orderby* argument), the function
+computes the score of all (unmatched) individuals in set 2 and take the best
+scoring one.
 
-You have to specify the boolean filters which provide the two sets to match
+One has to specify the boolean filters which provide the two sets to match
 (set1filter and set2filter), the criterion to decide in which order the
 individuals of the first set are matched and the expression that will be used
 to assign a score to each individual of the second set (given a particular
@@ -714,6 +954,12 @@ In the score expression the fields of the set 1 individual can be used normally
 and the fields of its possible partners can be used by prefixing them by
 "**other.**".
 
+The matching function returns the identification number of the matched
+individual for individuals which were matched, -1 for others.
+
+If the two sets are of different sizes, the excedent of the largest set is
+simply ignored.
+
 *generic setup* ::
 
     matching(set1filter=boolean_expr,
@@ -721,31 +967,14 @@ and the fields of its possible partners can be used by prefixing them by
              orderby=difficult_match,
              score=coef1 * field1 + coef2 * other.field2 + ...)
 
-The generic setup of the marriage market is simple; one needs to have selected
-those individuals who are to be coupled (*to_couple*=true). Furthermore, one
-needs to have a variable (*difficult_match*) which can be used to rank
-individuals according how easy they are to match. Finally, we need a function
-(*score*) matching potential partners.
-
-In the first step, and for those persons that are selected to be coupled, potential partners are matched in the order set by
-*difficult_match* and each woman is matched with the potential partner with the highest matching score. Once this is done,
-both individuals become actual partners and the partner identification numbers are set so that the partner number of each
-person equals the identification number of the partner.
-
 *example* ::
 
     marriage:
-        - in_couple: MARRIED or COHAB
-        - to_couple: if((age >= 18) and (age <= 90) and not in_couple,
-                        if(MALE,
-                           logit_regr(0.0, align='al_p_mmkt_m.csv'),
-                           logit_regr(0.0, align='al_p_mmkt_f.csv')),
-                        False)
+        - to_couple: not in_couple and age >= 18 and age <= 90
         - avg_age_males_to_couple: grpavg(age, filter=to_couple and MALE)
         - difficult_match: if(to_couple and FEMALE,
                               abs(age - avg_age_males_to_couple),
                               nan)
-        - work: (workstate > 0) and (workstate < 5)
         - partner_id: if(to_couple,
                          matching(set1filter=FEMALE, set2filter=MALE,
                                   orderby=difficult_match,
@@ -759,31 +988,17 @@ person equals the identification number of the partner.
                                         - 1.3286 * (not other.work and work)
                                         - 0.6549 * (other.work and work)),
                          partner_id)
-        - coupled: to_couple and (partner_id != -1)
-        - newhousehold: new('household', filter=coupled and FEMALE,
-                            start_period=period,
-                            region_id=choice([0, 1, 2, 3],
-                                             [0.1, 0.2, 0.3, 0.4]))
-        - household_id: if(coupled,
-                           if(MALE, partner.newhousehold, newhousehold),
-                           household_id)
 
+The code above shows an application. First, we decided that all persons
+between 18 and 90 years old who are not part of a couple are candidate for
+marriage. Next, for each candidate women, the variable *difficult_match* is
+the difference between her age and the average age of candidate men.
 
-The code above shows an application. First of all, individuals eligible for
-marriage are all those between 18 and 90 who are not a part of a couple; the
-actual decision who is eligible is left to the alignment process. Next, for
-every women eligible to coupling, the variable *difficult_match* is the
-difference between her age and the average age of men eligible for coupling.
-
-In a third step, for each eligible woman in turn (following the order set by
-*difficult_match*), all eligited men are assigned a score and the man with the
-best score is matched with that woman. This score depends on his age, his
-difference in age with the woman and the the work status of the potential
-partners.
-
-In a next step, a new household is created for women who have just become a part
-of a couple. Their household number, as well as their new partners is then
-updated to reflect their new household.
+In a third step, for each candidate woman in turn (following the order set by
+*difficult_match*), all candidate men which are still available are assigned
+a score and the man with the highest score is matched with that woman.
+This score depends on his age, his difference in age with the woman and the
+work status of the potential partners.
 
 
 .. index:: lifecycle functions
@@ -796,29 +1011,38 @@ Lifecycle functions
 new
 ~~~
 
-**new** creates items initiated from another item of the same entity (eg. a
-women gives birth) or another entity (eg. a marriage creates a new houshold).
+**new** creates new individuals. It can create individuals of the same entity
+(eg. a women gives birth) or another entity (eg. a *person*'s marriage creates
+a new *houshold*). The function returns the id of the newly created
+individuals.
 
 *generic format* ::
 
-    new('entity_name', filter=expr,
+    new('entity_name'[, filter=expr][, number=value]
         *set initial values of a selection of variables*)
 
-The first parameter defines the entity in which the item will be created (eg
-person, household, ...).
+The first argument specifies the entity in which the individuals will be
+created (eg person, household, ...).
 
-Then, the filter argument specifies which items of the current entity will serve
-as the origin for the new items (for persons, that would translate to who is
-giving birth, but the function can of course be used for any kind of entity).
+Then, one should use one of either the *filter* or the *number* argument.
+
+ * **filter** specifies which individuals of the current entity will serve as
+   the origin for the new individuals (for persons, that would translate to
+   who is giving birth, but the function can of course be used for any kind of
+   entity).
+
+ * **number** specifies how many individuals need to be created. In this
+   version, those new individuals do not have an "origin", so they can copy
+   value from it.
 
 Any subsequent argument specifies values for fields of the new individuals. Any
 field which is not specified there will receive the missing value corresponding
 to the type of the field ('nan' for floats, -1 for integers and False for
 booleans). Those extra arguments can be given constants, but also any
 expression (possibly using links, random functions, ...). Those expressions are
-evaluated in the context of the origin individuals. For example, you could write
-"mother_age = age", which would set the field "mother_age" on the new item to
-the age of their mother.
+evaluated in the context of the origin individuals. For example, you could
+write "mother_age = age", which would set the field "mother_age" on the new
+children to the age of their mother.
 
 *example 1* ::
 
@@ -833,42 +1057,37 @@ the age of their mother.
               household_id = household_id,
               partner_id = -1,
               age = 0,
-              civilstate = 1,
-              collar = 0,
-              education_level = -1,
-              workstate = 5,
+              civilstate = SINGLE,
               gender=choice([True, False], [0.51, 0.49]) )
 
 The first sub-process (*to_give_birth*) is a logit regression over women (not
 gender) between 15 and 50 which returns a boolean value whether that person
 should give birth or not. The logit itself does not have a deterministic part
-(0.0), which means that the ‘fertility rank’ of women that meet the above
-condition, is only determined by a logistic stochastic variable). This process
-is also aligned on the data in 'al_p_birth.csv'.
+(0.0), which means that all women that meet the above condition are equally
+likely to give birth (they are selected randomly). This process is also
+aligned on the data in 'al_p_birth.csv'.
 
-In the above case, a new person is created for each time a woman is scheduled to
+In the above case, a new person is created for each time a woman is selected to
 give birth. Secondly, a number of links are established: the value for the
 *mother_id* field of the child is set to the id-number of his/her mother, the
-child receives the household number of his/her mother, the child's father is set
-to the partner of the mother, ... Finally some variables of the child are set to
-specific initial values: the most important of these is its gender, which is the
-result of a simple choice process.
+child's father is set to the partner of the mother, the child receives the
+household number of his/her mother, ... Finally some variables of the child are
+set to specific initial values: the most important of these is its gender,
+which is the result of a simple choice process.
 
-**new** is not limited to items of the same entity; the below procedure
-*get a life* makes sure that all those who are single when they are 24 year old,
-leave their parents’ household for their own household. The region of this
-household is created through a simple choice-process.
+**new** can create individuals of different entities; the below procedure
+*get_a_life* makes sure that all those who are single when they are 24 year
+old, leave their parents’ household for their own household. The region of
+this new household is created randomly through a choice-process.
 
 *example 2* ::
 
     get_a_life:
-        - household_id:
-            if((age == 24) and (civilstate != 2) and (civilstate != 3),
-               new('household',
-                   start_period=period,
-                   region_id=choice([0, 1, 2, 3], [0.1, 0.2, 0.3, 0.4])
-               ),
-               household_id)
+        - household_id: if(ISSINGLE and age == 24,
+                           new('household',
+                               region_id=choice([0, 1, 2, 3],
+                                                [0.1, 0.2, 0.3, 0.4])),
+                           household_id)
 
 .. index:: clone
 
@@ -939,21 +1158,25 @@ LIAM 2 produces simulation output in three ways. First of all, by default, the
 simulated datasets are stored in hdf5 format. These can be accessed at the end
 of the run. You can use several tools to inspect the data.
 
-You can display information during the simulation using *show* or *groupby*. You
-can *dump* data to csv-file for further study.
+You can display information during the simulation (in the console log) using
+the *show* function. You can write that same information to csv files using
+the *csv* function. You can produce tabular data by using the *dump* or
+*groupby* functions.
 
-If you run LIAM 2 in interactive mode, you can type in output functions in the
-console to inspect the data.
+In the interactive console, you can use any of those output functions to
+inspect the data interactively.
+
 
 .. index:: show
 
 show
 ----
 
-*show* evaluates expressions and prints the result to the console. ::
+*show* evaluates expressions and prints the result to the console log. Note
+that, in the *interactive console*, show is implicit on all commands, so you
+do not need to use it. *show* has the following signature: ::
 
     show(expr1[, expr2, expr3, ...])
-
 
 *example 1* ::
 
@@ -970,11 +1193,11 @@ average age.
          "Average age:", grpavg(age),
          "Age std dev:", grpstd(age))
 
-    gives
+gives ::
 
     Count: 19944 Average age: 42.7496991576 Age std dev: 21.9815913417
 
-Note that you can use the special character "\n" to display the rest of the
+Note that you can use the special character "\\n" to display the rest of the
 result on the next line.
 
 *example 3* ::
@@ -983,66 +1206,105 @@ result on the next line.
          "\nAverage age:", grpavg(age),
          "\nAge std dev:", grpstd(age))
 
-    gives
+gives ::
 
     Count: 19944
     Average age: 42.7496991576
     Age std dev: 21.9815913417
+
+.. index:: qshow
+
+qshow
+-----
+
+*qshow* evaluates expressions and prints their results to the console log
+alongside the "textual form" of the expressions. If several expressions are
+given, they are each printed on a separate line. *qshow* usage is exactly the
+same than *show*.
+
+*example* ::
+
+    qshow(grpcount(), grpavg(age), grpstd(age))
+
+will give: ::
+
+    grpcount(): 19944
+    grpavg(age): 42.7496991576
+    grpstd(a=age): 21.9815913417
+
 
 .. index:: csv
 
 csv
 ---
 
-The **csv** function writes values to a csv-file.
+The **csv** function writes values to csv files. ::
 
     csv(expr1[, expr2, expr3, ...,
-        suffix='file_suffix', fname='filename', mode='w'])
+        [suffix='file_suffix'][, fname='filename'][, mode='w'])
 
-The suffix, fname and mode are optional arguments.
-
-  - 'fname' allows defining the exact file names used. You can optionally use
-    {entity} and {period} to customize the name.
-  - 'suffix' allows to set the name of csv file more easily. If suffix is used,
-    the filename will be: "{entity}_{period}_{suffix}.csv"
-
-The default file name (if neither 'fname' nor 'suffix' is used) is  
-"{entity}_{period}.csv".
+'suffix', 'fname' and 'mode' are optional arguments. By default (if neither
+'fname' nor 'suffix' is used), the name of the csv file is generated using the
+following pattern: "{entity}_{period}.csv".
 
 *example* ::
 
-    csv(grpavg(income), suffix='income')
+    csv(grpavg(income))
 
 will create one file for each simulated period. Assuming, start_period is
-2002 and periods is 2, it will create two files: "person_2002_income.csv" and
-"person_2003_income.csv" with the average income of the population for period
+2002 and periods is 2, it will create two files: "person_2002.csv" and
+"person_2003.csv" with the average income of the population for period
 2002 and 2003 respectively.
 
-   - 'mode' allows appending (mode='a') to a csv file instead of overwriting it
-     (mode='w' by default). This allows you, for example, to store the value of
-     some expression for all periods in the same file (instead of one file per
-     period by default).
+Arguments:
 
-*example* ::
+  - 'suffix' allows to customize the name of the files easily.
+    When it is used, the files are named using the following pattern:
+    "{entity}_{period}_{suffix}.csv".
 
-    csv(period, grpavg(income), fname='avg_income.csv', mode='a')
+    *example* ::
 
-Note that unless you erase/overwrite the file one way or another between two
-runs of a simulation, you will append the data of the current simulation to
-that of the previous one. One way to do that automatically is to have a
-procedure in the init section without mode='a' to overwrite the file.
+        csv(grpavg(income), suffix='income')
 
-If you want that file to start empty, you can do so this way: ::
+    would create "person_2002_income.csv" and "person_2003_income.csv".
+
+  - 'fname' allows defining the exact file name or pattern to use.
+    You can optionally use the '{entity}' and '{period}' key words to customize
+    the name.
+
+    *example* ::
+
+        csv(grpavg(income), fname='income{period}.csv')
     
-    csv(fname='avg_income.csv')
+    would create "income2002.csv" and "income2003.csv".
 
-If you want some headers in your file, you could write them at that point: ::
+  - 'mode' allows appending (mode='a') to a csv file instead of overwriting it
+    (mode='w' by default). This allows you, for example, to store the value of
+    some expression for all periods in the same file (instead of one file per
+    period by default).
+
+    *example* ::
+
+        csv(period, grpavg(income), fname='avg_income.csv', mode='a')
+
+    Note that unless you erase/overwrite the file one way or another between
+    two runs of a simulation, you will append the data of the current
+    simulation to that of the previous one. One way to do overwrite the file
+    automatically at the start of a simulation is to have a procedure in the
+    init section without mode='a'.
     
-    csv('period', 'average income', fname='avg_income.csv')
+    If you want that file to start empty, you can do so this way: ::
+
+        csv(fname='avg_income.csv')
+
+    If you want some headers in your file, you could write them at that
+    point: ::
+
+        csv('period', 'average income', fname='avg_income.csv')
 
 When you use the csv() function in combination with (at least one) table
 expressions (see dump and groupby functions below), the results are appended
-below each other.
+below each other. ::
 
     csv(table_expr1, 'and here goes another table', table_expr2,
         fname='tables.csv')
@@ -1084,25 +1346,25 @@ dump
 **dump** produces a table with the expressions given as argument evaluated over
 many (possibly all) individuals of the dataset.
 
-*general format*
+*general format* ::
 
     dump([expr1, expr2, ...,
-          filter=filterexpression, missing=value, header=True])
+         filter=filterexpression, missing=value, header=True])
 
 If no expression is given, *all* fields of the current entity will be dumped
 (including temporary variables available at that point), otherwise, each
 expression will be evaluated on the objects which satisfy the
 filter and produce a table.
 
-The 'filter' argument allows to evaluate the expressions only on the individuals
-which satisfy the filter. Defaults to None (evaluate on all individuals).
+The 'filter' argument allows to evaluate the expressions only on the
+individuals which satisfy the filter. Defaults to None (evaluate on all
+individuals).
 
 The 'missing' argument can be used to transform 'nan' values to another value.
 Defaults to None (no transformation).
 
 The 'header' argument determine whether column names should be in the dump or
 not. Defaults to True.
-
 
 *example* ::
 
@@ -1128,34 +1390,38 @@ groupby
 -------
 
 **groupby** (aka *pivot table*): group all individuals by their value for the
-given expressions, and optionally compute an expression for each group. If no
-expression is given, it will compute the number of individuals in that
-group. A filter can be specified to limit the individuals taken into account. 
+given expressions, and optionally compute an expression for each group (using
+the *expr* argument). If no expression is given, it will compute the number of
+individuals in that group. A *filter* can be specified to limit the
+individuals taken into account. 
 
 *general format* ::
 
-    groupby(expr1[, expr2, expr3, ...] [, expr=expression]
-            [, filter=filterexpression] [, percent=True])
+    groupby(expr1[, expr2, expr3, ...]
+            [, expr=expression]
+            [, filter=filterexpression]
+            [, percent=True],
+            [, pvalues=possible_values])
 
 *example* ::
 
-    show(groupby(age / 10, gender))
+    show(groupby(trunc(age / 10), gender))
 
 gives ::
 
-        gender | False | True |
-    (age / 10) |       |      | total
-             0 |   818 |  803 |  1621
-             1 |   800 |  800 |  1600
-             2 |  1199 | 1197 |  2396
-             3 |  1598 | 1598 |  3196
-             4 |  1697 | 1696 |  3393
-             5 |  1496 | 1491 |  2987
-             6 |  1191 | 1182 |  2373
-             7 |   684 |  671 |  1355
-             8 |   369 |  357 |   726
-             9 |   150 |  147 |   297
-         total | 10002 | 9942 | 19944
+    trunc((age / 10)) | gender |      |      
+                      |  False | True | total
+                    0 |    818 |  803 |  1621
+                    1 |    800 |  800 |  1600
+                    2 |   1199 | 1197 |  2396
+                    3 |   1598 | 1598 |  3196
+                    4 |   1697 | 1696 |  3393
+                    5 |   1496 | 1491 |  2987
+                    6 |   1191 | 1182 |  2373
+                    7 |    684 |  671 |  1355
+                    8 |    369 |  357 |   726
+                    9 |    150 |  147 |   297
+                total |  10002 | 9942 | 19944
 
 *example* ::
 
@@ -1163,11 +1429,11 @@ gives ::
 
 gives ::
 
-    gender | False | True |
-    inwork |       |      | total
-     False |  6170 | 5587 | 11757
-      True |  3832 | 4355 |  8187
-     total | 10002 | 9942 | 19944
+    inwork | gender |      |      
+           |  False | True | total
+     False |   6170 | 5587 | 11757
+      True |   3832 | 4355 |  8187
+     total |  10002 | 9942 | 19944
 
 *example* ::
 
@@ -1175,8 +1441,8 @@ gives ::
 
 gives ::
 
-    gender | False |  True |
-    inwork |       |       |  total
+    inwork | gender |      |      
+           |  False | True | total
      False | 30.94 | 28.01 |  58.95
       True | 19.21 | 21.84 |  41.05
      total | 50.15 | 49.85 | 100.00
@@ -1187,27 +1453,86 @@ gives ::
 
 gives the average age by workstate and gender ::
 
-       gender | False |  True |      
-    workstate |       |       | total
-            1 | 41.29 | 40.53 | 40.88
-            2 | 40.28 | 44.51 | 41.88
-            3 |  8.32 |  7.70 |  8.02
-            4 | 72.48 | 72.27 | 72.38
-            5 | 42.35 | 46.56 | 43.48
-        total | 42.67 | 42.38 | 42.53
+    workstate | gender |       |      
+              |  False |  True | total
+            1 |  41.29 | 40.53 | 40.88
+            2 |  40.28 | 44.51 | 41.88
+            3 |   8.32 |  7.70 |  8.02
+            4 |  72.48 | 72.27 | 72.38
+            5 |  42.35 | 46.56 | 43.48
+        total |  42.67 | 42.38 | 42.53
+
+As of version 0.6, groupby can also be used in larger expressions. This can be
+used for example to compute alignment targets on the fly: ::
+
+    # see note below about expr=grpcount(condition) vs filter=condition
+    - men_by_age: groupby(age, expr=grpcount(gender))
+    - men_prop_by_age: men_by_age / groupby(age)
+    - aligned: align(proportions=men_prop_by_age)
+
+Note that there is a subtle difference between using "filter=condition" and
+"expr=grpcount(condition))". The former will not take the filtered individuals
+into account at all, while the later will take them into account but not count
+them. This can make a difference on the output if there are some empty
+categories, and this can be important when using the result of a groupby
+inside a larger expression (as above) because it can only work with arrays of
+the same size. Compare : ::
+
+  groupby(civilstate, filter=age > 80)
+  
+  civilstate |     |    |      
+           1 |   3 |  4 | total
+         542 | 150 | 85 |   777
+         
+with ::
+
+  groupby(civilstate, expr=grpcount(age > 80))
+
+  civilstate |   |     |    |      
+           1 | 2 |   3 |  4 | total
+         542 | 0 | 150 | 85 |   777
+
+The *expr* argument will usually be used with an aggregate function, but it
+also supports normal expressions, in which case the values for each individual
+will be displayed in a list. This feature should only be used with care and
+usually in combination with a strong *filter* to avoid producing extremely
+large tables which would take forever to display. ::
+
+  groupby(agegroup_civilstate, gender, expr=id, filter=id < 20)
+
+  agegroup_civilstate |        gender |             |                     
+                      |         False |        True |                total
+                    0 |     [0 1 4 6] |   [2 3 5 7] |    [0 1 4 6 2 3 5 7]
+                    5 |     [8 10 12] |   [9 11 13] |    [8 10 12 9 11 13]
+                   10 |    [14 16 18] |  [15 17 19] |  [14 16 18 15 17 19]
+                total | [0 1 4 6 8 10 |  [2 3 5 7 9 |  [0 1 4 6 8 10 12 14
+                      |  12 14 16 18] | 11 13 15 17 |   16 18 2 3 5 7 9 11
+                      |               |         19] |         13 15 17 19]
+
+or ::
+ 
+  groupby(civilstate, gender, expr=age, filter=id > 100 and id < 110)
+
+  civilstate |        gender |                  |                             
+             |         False |             True |                        total
+           1 |       [46 47] |       [46 47 47] |             [46 47 46 47 47]
+           2 |          [47] |          [45 46] |                   [47 45 46]
+           4 |          [46] |               [] |                         [46]
+       total | [46 47 47 46] | [46 47 47 45 46] | [46 47 47 46 46 47 47 45 46]
+  
 
 .. index:: interactive console, debugging
 
 Debugging and the interactive console
 =====================================
 
-LIAM 2 features an interactive console which allows you to interactively explore
-the state of the memory either during or after a simulation completed.
+LIAM 2 features an interactive console which allows you to interactively
+explore the state of the memory either during or after a simulation completed.
 
-You can reach it in two ways. You can either pass "-i" as the last argument when
-running the executable, in which case the interactive console will launch after
-the whole simulation is over. The alternative is to use breakpoints in your
-simulation to interrupt the simulation at a specific point (see below).
+You can reach it in two ways. You can either pass "-i" as the last argument
+when running the executable, in which case the interactive console will launch
+after the whole simulation is over. The alternative is to use breakpoints in
+your simulation to interrupt the simulation at a specific point (see below).
 
 Type "help" in the console for the list of available commands. In addition to
 those commands, you can type any expression that is allowed in the simulation
@@ -1218,17 +1543,17 @@ file and have the result directly. Show is implicit for all operations.
     >>> grpavg(age)
     53.7131819615
 
-    >>> groupby(age / 20, gender, expr=grpcount(inwork))
+    >>> groupby(trunc(age / 20), gender, expr=grpcount(inwork))
 
-        gender | False | True |
-    (age / 20) |       |      | total
-             0 |    14 |   18 |    32
-             1 |   317 |  496 |   813
-             2 |   318 |  258 |   576
-             3 |    40 |  102 |   142
-             4 |     0 |    0 |     0
-             5 |     0 |    0 |     0
-         total |   689 |  874 |  1563
+    trunc(age / 20) | gender |      |      
+                    |  False | True | total
+                  0 |     14 |   18 |    32
+                  1 |    317 |  496 |   813
+                  2 |    318 |  258 |   576
+                  3 |     40 |  102 |   142
+                  4 |      0 |    0 |     0
+                  5 |      0 |    0 |     0
+              total |    689 |  874 |  1563
 
 .. index:: breakpoint
 

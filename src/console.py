@@ -2,11 +2,13 @@ import sys
 
 import numpy as np
 
-from expr import expr_eval, Variable
+import config
+from data import get_fields
+from expr import expr_eval, Variable, GlobalVariable
 from exprparser import parse
 from context import EntityContext
 from registry import entity_registry
-from properties import Process
+from process import Process
 
 entity_required = \
     "current entity is not set. It is required to set one using " \
@@ -26,6 +28,7 @@ help_template = """
     periods:         list the available periods for the current entity
     period [period]: set the current period
     fields [entity]: list the fields of that entity (or the current entity)
+    globals:         list the available globals
 
     show is implicit on all commands
 """
@@ -36,24 +39,20 @@ class InvalidPeriod(ValueError):
 
 
 class Console(object):
-    def __init__(self, entity=None, period=None):
+    def __init__(self, entity=None, period=None,
+                 globals_def=None, globals_data=None):
+        if entity is None and len(entity_registry) == 1:
+            entity = entity_registry.values()[0]
         self.entity = entity
+        if period is None and entity is not None:
+            period = EntityContext(entity).list_periods()[-1]
         self.period = period
+        self.globals_def = globals_def
+        self.globals_data = globals_data
 
     def list_entities(self):
         ent_names = [repr(k) for k in entity_registry.keys()]
         print "available entities:", ', '.join(ent_names)
-
-    def list_fields(self, ent_name=None):
-        if ent_name is None:
-            entity = self.entity
-            if entity is None:
-                raise Exception(entity_required)
-        else:
-            entity = self.get_entity(ent_name)
-            if entity is None:
-                return
-        print "fields:", ', '.join(name for name, _ in entity.fields)
 
     def get_entity(self, name):
         try:
@@ -80,7 +79,7 @@ class Console(object):
                                         % (self.entity.name, self.period))
 
     def _list_periods(self):
-        return EntityContext(self.entity, {}).list_periods()
+        return EntityContext(self.entity).list_periods()
 
     def list_periods(self):
         if self.entity is None:
@@ -108,6 +107,26 @@ class Console(object):
         except ValueError:
             print "invalid period"
 
+    def list_fields(self, ent_name=None):
+        if ent_name is None:
+            entity = self.entity
+            if entity is None:
+                raise Exception(entity_required)
+        else:
+            entity = self.get_entity(ent_name)
+            if entity is None:
+                return
+        print "fields:", ', '.join(name for name, _ in entity.fields)
+
+    def list_globals(self):
+        print "globals:"
+        for k, v in self.globals_data.iteritems():
+            if v.dtype.names:
+                details = ": " + ", ".join(v.dtype.names)
+            else:
+                details = ""
+            print "* %s%s" % (k, details)
+
     def execute(self, s):
         entity = self.entity
         if entity is None:
@@ -117,15 +136,16 @@ class Console(object):
         if period is None:
             raise Exception(period_required)
 
-        variables = entity.variables
+        cond_context = entity.conditional_context
+        variables = entity.all_variables(self.globals_def)
         # add all currently defined temp_variables because otherwise
         # local variables (defined within a procedure) wouldn't be available
         variables.update((name, Variable(name))
                          for name in entity.temp_variables.keys())
-        cond_context = entity.conditional_context
-        expr = parse(s, variables, cond_context)
-        #FIXME: add globals
-        ctx = EntityContext(entity, {'period': period, 'nan': np.nan})
+        expr = parse(s, variables, cond_context, interactive=True)
+        ctx = EntityContext(entity, {'period': period,
+                                     'nan': np.nan,
+                                     '__globals__': self.globals_data})
         if isinstance(expr, Process):
             expr.run(ctx)
             print "done."
@@ -171,6 +191,8 @@ class Console(object):
                         self.list_fields(s[7:])
                     else:
                         self.list_fields()
+                elif s == "globals":
+                    self.list_globals()
                 elif debugger and s in ('s', 'step'):
                     return 'step'
                 elif debugger and s in ('r', 'resume'):
@@ -182,8 +204,9 @@ class Console(object):
                     if res is not None:
                         print res
             except Exception, e:
-#                    import traceback
-#                    traceback.print_exc()
+                if config.debug:
+                    import traceback
+                    traceback.print_exc()
                 msg = str(e)
                 lines = msg.splitlines()
                 if len(lines) > 1:

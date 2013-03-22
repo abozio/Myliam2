@@ -5,13 +5,21 @@ import numpy as np
 
 import config
 from expr import Expr, expr_eval
-from properties import Process, BreakpointException, TableExpression
+from exprbases import TableExpression
+from process import Process, BreakpointException
+from partition import filter_to_indices
+from utils import LabeledArray
 
 
 class Show(Process):
-    def __init__(self, *args):
+    def __init__(self, *args, **kwargs):
         Process.__init__(self)
         self.args = args
+        self.print_exprs = kwargs.pop('print_exprs', False)
+        if kwargs:
+            kwarg, _ = kwargs.popitem()
+            raise TypeError("'%s' is an invalid keyword argument for show()"
+                            % kwarg)
 
     def expressions(self):
         for arg in self.args:
@@ -23,14 +31,27 @@ class Show(Process):
             print "show skipped",
         else:
             values = [expr_eval(expr, context) for expr in self.args]
-            print ' '.join(str(v) for v in values),
+            if self.print_exprs:
+                titles = [str(expr) for expr in self.args]
+                print '\n'.join('%s: %s' % (title, value)
+                                for title, value in zip(titles, values)),
+            else:
+                print ' '.join(str(v) for v in values),
 
     def __str__(self):
         #TODO: the differentiation shouldn't be needed. I guess I should
-        # have __repr__ defined for all properties
+        # have __repr__ defined for all expressions
         str_args = [str(arg) if isinstance(arg, Expr) else repr(arg)
                     for arg in self.args]
         return 'show(%s)' % ', '.join(str_args)
+
+
+class QuickShow(Show):
+    def __init__(self, *args):
+        Show.__init__(self, *args, print_exprs=True)
+
+    def __str__(self):
+        return Show.__str__(self).replace('show(', 'qshow(')
 
 
 class CSV(Process):
@@ -82,6 +103,8 @@ class CSV(Process):
             for arg in self.args:
                 if isinstance(arg, TableExpression):
                     data = expr_eval(arg, context)
+                    if isinstance(data, LabeledArray):
+                        data = data.as_table()
                 elif isinstance(arg, (list, tuple)):
                     data = [[expr_eval(expr, context) for expr in arg]]
                 else:
@@ -122,7 +145,7 @@ class RemoveIndividuals(Process):
 
         # update id_to_rownum
         already_removed = entity.id_to_rownum == -1
-        already_removed_indices = already_removed.nonzero()[0]
+        already_removed_indices = filter_to_indices(already_removed)
         already_removed_indices_shifted = already_removed_indices - \
                                   np.arange(len(already_removed_indices))
 
@@ -207,7 +230,7 @@ class AssertEqual(Assert):
     def eval_assertion(self, context):
         r1 = expr_eval(self.expr1, context)
         r2 = expr_eval(self.expr2, context)
-        if isinstance(r1, np.ndarray) and isinstance(r2, np.ndarray):
+        if isinstance(r1, np.ndarray) or isinstance(r2, np.ndarray):
             passed = np.array_equal(r1, r2)
         else:
             passed = r1 == r2
@@ -226,6 +249,7 @@ functions = {
 #    'print': Print,
     'csv': CSV,
     'show': Show,
+    'qshow': QuickShow,
     'remove': RemoveIndividuals,
     'breakpoint': Breakpoint,
     'assertTrue': AssertTrue,

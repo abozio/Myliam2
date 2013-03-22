@@ -1,5 +1,4 @@
 ﻿.. index:: import
-
 .. _import_data:
 
 Importing data
@@ -8,14 +7,34 @@ Importing data
 data files
 ----------
 
-As of now, you can only import CSV files, one file for each entity.
-Their first row should contain the name of the fields. You need at least two
-integer columns: "id" and "period" (though they do not necessarily need to be
-named like that in the csv file).
-As explained, be care that the "id" should be an integer and that the "period" 
-should be consistent with the start period in the *simulation* block. 
+As of now, you can only import CSV files. LIAM2 currently supports two kinds
+of data files: tables and multi-dimensional arrays. 
 
-Also be sure to use the utf-8 encoding to avoid compatibility problems.
+**table** files are used for entities data and optionally for globals. They
+should have one column per field and their first row should contain the name
+of the fields. These names should not contain any special character (accents,
+etc.). 
+
+For entities data, you need at least two *integer* columns: "id" and "period" 
+(though they do not necessarily need to be named like that in the csv file).
+
+**array** files are used for other external data (alignment data for example).
+They are arrays of any number of dimensions of a single homogeneous type.
+The first row should contain the dimension names (one dimension by cell).
+The second row should contain the possible values for the last dimension.
+Each subsequent row should start by the values for the first dimensions then
+the actual data.
+
+*example* ::
+
+  gender |  work | civilstate |      |      |     
+         |       |          1 |    2 |    3 |    4
+   False | False |       5313 | 1912 |  695 | 1222
+   False |  True |        432 |  232 |   51 |   87
+    True | False |       4701 | 2185 | 1164 | 1079
+    True |  True |        369 |  155 |  101 |  116
+
+This is the same format that groupby() generates except for totals.
 
 description file
 ----------------
@@ -32,14 +51,29 @@ files have the following general format: ::
     # best trade-off for your dataset.
     compression: <type>-<level>
 
+    # globals are entirely optional
     globals:
         periodic:
-            path: <path_of_globals_file>.csv
-            # if the csv file is transposed (each field is on a row instead of a
-            # column and the field names are in the first column, instead of the
-            # first row), you can use "transpose: true". You do not need to
+            path: <path_of_file>.csv
+            # if the csv file is transposed (each field is on a row instead of
+            # a column and the field names are in the first column, instead of
+            # the first row), you can use "transpose: true". You do not need to
             # specify anything if the file is not transposed.
             transposed: true
+
+            # fields are optional (if not specified, all fields are imported)
+            fields:
+                # PERIOD is implicit
+                - <field1_name>: <field1_type>
+                - <field2_name>: <field2_type>
+                - ...
+
+        other_table:
+            # same options than for periodic: path, fields, transpose, ...
+
+        other_array:
+            path: <path_of_file>.csv
+            type: <field_type>
 
     entities:
         <entity1_name>:
@@ -181,11 +215,11 @@ directory where the description file is.
 This will load all the fields of the household entity in 
 "*household.csv*" and load from "person.csv" only the fields listed above. 
 The data will be converted (if necessary) to the type declared. In this case,
-person.csv should contain the following columns (not necessarily in this
-order): period, id, age, male, workstate, civilstate, partner_id.
+person.csv should contain at least the following columns (not necessarily in
+this order): period, id, age, male, workstate, civilstate, partner_id.
 
 If the fields of an entity are scattered in several files, you can use the
-"files" key to list them, as in *example 4* ::
+"files" key to list them, as in this fourth example : ::
 
     output: example4.h5
 

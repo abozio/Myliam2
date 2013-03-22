@@ -1,215 +1,60 @@
-# -*- coding:utf-8 -*-
-
 from __future__ import print_function
 
-from itertools import izip, chain, product, count
-import random
-import csv
+from itertools import izip
 import os
 
 import numpy as np
 
 import config
-from expr import Expr, Variable, expr_eval, collect_variables, traverse_expr
-from context import context_length, context_subset
-from utils import skip_comment_cells, strip_rows, PrettyTable, unique, \
-                  duplicates, unique_duplicate, prod
-from properties import (FilteredExpression, TableExpression, GroupCount,
-                        add_individuals)
-
-import pdb
-
-try:
-    from groupby import filter_to_indices
-except ImportError:
-    def filter_to_indices(filter_value):
-        return filter_value.nonzero()[0]
-
-try:
-    from groupby import group_indices_nd
-
-    def partition_nd(columns, filter_value, possible_values):
-        # note that since we don't iterate through the columns many times,
-        # it's not worth it to copy non contiguous columns in this version
-        d = group_indices_nd(columns, filter_value)
-
-        if len(columns) > 1:
-            pvalues = product(*possible_values)
-        else:
-            pvalues = possible_values[0]
-
-        empty_list = np.empty(0, dtype=int)
-        return [d.get(pv, empty_list) for pv in pvalues]
-except ImportError:
-    #TODO: make possible_values a list of combinations of value. In some cases,
-    # (eg GroupBy), we are not interested in all possible combinations.
-    def partition_nd(columns, filter_value, possible_values):
-        """
-        * columns is a list of columns containing the data to be partitioned
-        * filter_value is a vector of booleans which selects individuals
-        * possible_values is an matrix with N vectors containing the possible
-          values for each column
-        * returns a 1d array of lists of indices
-        """
-        # make a copy of non contiguous columns. It is only worth it when the
-        # number of possible values for that column is large enough to
-        # compensate for the cost of the copy, and it is usually the case.
-        #XXX: we might want to be more precise about this.
-        # 1e5 arrays
-        # * not aligned (nor contiguous): always worth it
-        # * aligned but not contiguous: never worth it
-        # 1e6 arrays
-        # * not aligned (nor contiguous): worth it from 6 values
-        # * aligned but not contiguous: worth it from 12 values
-        contiguous_columns = []
-        for col in columns:
-            if isinstance(col, np.ndarray) and col.shape:
-                if not col.flags.contiguous:
-                    col = col.copy()
-            else:
-                col = [col]
-            contiguous_columns.append(col)
-        columns = contiguous_columns
-
-        size = tuple([len(colvalues) for colvalues in possible_values])
-
-        #TODO: build result as a flattened array directly instead of calling
-        # ravel afterwards
-
-        # initialise result with empty lists
-        result = np.empty(size, dtype=list)
-
-        # for each combination of i, j, k:
-        for idx in np.ndindex(*size):
-            # local_filter = filter & (data0 == values0[i])
-            #                       & (data1 == values1[j])
-            # it is a bit faster to do: v = expr; v &= b
-            # than
-            # v = copy(b); v &= expr
-            parts = zip(idx, possible_values, columns)
-            if parts:
-                first_i, first_colvalues, first_coldata = parts[0]
-                local_filter = first_coldata == first_colvalues[first_i]
-                for i, colvalues, coldata in parts[1:]:
-                    local_filter &= coldata == colvalues[i]
-                local_filter &= filter_value
-            else:
-                # filter_value can be a simple boolean, in that case, we
-                # get a 0-d array.
-                local_filter = np.copy(filter_value)
-            if local_filter.shape:
-                result[idx] = filter_to_indices(local_filter)
-            else:
-                # local_filter = True
-                assert local_filter
-                result[idx] = np.arange(len(columns[0]))
-
-        # pure-python version. It is 10x slower than the NumPy version above
-        # but it might be a better starting point to translate to C,
-        # especially given that the possible_values are usually sorted (we
-        # could sort them too), so we could use some bisect algorithm to find
-        # which category it belongs to. python built-in bisect is faster
-        # (average time on all indexes) than list.index() starting from ~20
-        # elements. We usually have even less elements than that though :(.
-        # Strangely bisect on a list is 2x faster than np.searchsorted on an
-        # array, even with large array sizes (10^6).
-#        fill_with_empty_list = np.frompyfunc(lambda _: [], 1, 1)
-#        fill_with_empty_list(result, result)
-#
-#        for idx, row in enumerate(izip(*columns)):
-#            # returns a tuple with the position of the group this row belongs
-#            # to. eg. (0, 1, 5)
-#            #XXX: this uses strict equality, partitioning using
-#            # inequalities might be useful in some cases
-#            if filter[idx]:
-#                try:
-##                    pos = tuple([values_i.index(vi) for vi, values_i
-#                    pos = tuple([np.searchsorted(values_i, vi)
-#                                 for vi, values_i
-#                                 in izip(row, possible_values)])
-#                    result[pos].append(idx)
-#                except ValueError:
-#                    #XXX: issue a warning?
-#                    pass
-#        for idx in np.ndindex(*size):
-#            result[idx] = np.array(result[idx])
-        return np.ravel(result)
+from align_link import align_link_nd
+from context import context_length, EntityContext
+from expr import (Expr, Variable,
+                  expr_eval, collect_variables, traverse_expr,
+                  missing_values)
+from exprbases import FilteredExpression
+from groupby import GroupBy
+from links import Link, LinkValue
+from partition import partition_nd, filter_to_indices
+from importer import load_ndarray
+from registry import entity_registry
+from utils import PrettyTable, LabeledArray
+from random import random
 
 
-def extract_period(period, expressions, possible_values, probabilities):
-    #TODO: allow any temporal variable
+def kill_axis(axis_name, value, expressions, possible_values, need):
+    '''possible_values is a list of ndarrays'''
+
     str_expressions = [str(e) for e in expressions]
-    periodcol = str_expressions.index('period')
-    #TODO: allow period in any dimension
-    if periodcol != len(expressions) - 1:
-        raise NotImplementedError('period, if present, should be the last '
-                                  'expression')
-    expressions = expressions[:periodcol] + expressions[periodcol + 1:]
+    axis_num = str_expressions.index(axis_name)
+    expressions = expressions[:axis_num] + expressions[axis_num + 1:]
     possible_values = possible_values[:]
-    period_values = possible_values.pop(periodcol)
-    num_periods = len(period_values)
-    try:
-        period_idx = period_values.index(period)
-        probabilities = probabilities[period_idx::num_periods]
-    except ValueError:
-        raise Exception('missing alignment data for period %d' % period)
+    axis_values = possible_values.pop(axis_num)
 
-    return expressions, possible_values, probabilities
+    #TODO: make sure possible_values are sorted and use searchsorted instead
+    is_wanted_value = axis_values == value
+    value_idx = is_wanted_value.nonzero()[0]
+    num_idx = len(value_idx)
+    if num_idx < 1:
+        raise Exception('missing alignment data for %s %s'
+                        % (axis_name, value))
+    if num_idx > 1:
+        raise Exception('invalid alignment data for %s %s: there are %d cells'
+                        'for that value (instead of one)'
+                        % (num_idx, axis_name, value))
+    value_idx = value_idx[0]
+    complete_idx = [slice(None) for _ in range(need.ndim)]
+    complete_idx[axis_num] = value_idx
+    need = need[complete_idx]
+    return expressions, possible_values, need
 
 
-def align_get_indices_nd(context, filter_value, score,
-                         expressions, possible_values, probabilities,
-                         take_filter=None, leave_filter=None, weights=None,
-                         past_error=None,method="default"):
-    assert len(expressions) == len(possible_values)
+def align_get_indices_nd(ctx_length, groups, need, filter_value, score,
+                         take_filter=None, leave_filter=None, method="default"):
+    assert isinstance(need, np.ndarray) and \
+           issubclass(need.dtype.type, np.integer)
+    assert score is None or isinstance(score, (bool, int, float, np.ndarray))
+    assert method in ("default","sidewalk") # to delete as the check is done earlier ?
     
-        
-    if filter_value is not None:
-        num_to_align = np.sum(filter_value)
-    else:
-        num_to_align = context_length(context)
-
-    #TODO: allow any temporal variable
-    if 'period' in [str(e) for e in expressions]:
-        period = context['period']
-        expressions, possible_values, probabilities = \
-            extract_period(period, expressions, possible_values,
-                           probabilities)
-
-    if expressions:
-        assert len(probabilities) == prod(len(pv) for pv in possible_values)
-
-        # retrieve the columns we need to work with
-        columns = [expr_eval(expr, context) for expr in expressions]
-        if filter_value is not None:
-            groups = partition_nd(columns, filter_value, possible_values)
-        else:
-            groups = partition_nd(columns, True, possible_values)
-    else:
-        if filter_value is not None:
-            groups = [filter_value.nonzero()[0]]
-        else:
-            groups = [np.arange(num_to_align)]
-        assert len(probabilities) == 1
-
-    # the sum is not necessarily equal to len(a), because some individuals
-    # might not fit in any group (eg if some alignment data is missing)
-    num_aligned = sum(len(g) for g in groups)
-    if num_aligned < num_to_align:
-        if filter_value is not None:
-            to_align = set(filter_value.nonzero()[0])
-        else:
-            to_align = set(xrange(num_to_align))
-        aligned = set()
-        for member_indices in groups:
-            aligned |= set(member_indices)
-        unaligned = to_align - aligned
-        print("Warning: %d individual(s) do not fit in any alignment category"
-              % len(unaligned))
-        print(PrettyTable([['id'] + expressions] +
-                          [[col[row] for col in [context['id']] + columns]
-                           for row in unaligned]))
-
     if filter_value is not None:
         bool_filter_value = filter_value.copy()
     else:
@@ -221,7 +66,15 @@ def align_get_indices_nd(context, filter_value, score,
         # account or not. This only impacts what it displayed on the console,
         # but still...
         take = np.sum(take_filter)
-        take_indices = (take_filter & bool_filter_value).nonzero()[0]
+
+        #XXX: it would probably be faster to leave the filters as boolean
+        # vector and do
+        #     take_members = take_filter[member_indices]
+        #     group_always = member_indices[take_members]
+        # instead of
+        #     group_always = np.intersect1d(members_indices, take_indices,
+        #                                   assume_unique=True)
+        take_indices = filter_to_indices(take_filter & bool_filter_value)
         maybe_filter &= ~take_filter
     else:
         take = 0
@@ -234,45 +87,27 @@ def align_get_indices_nd(context, filter_value, score,
         leave = 0
 
     if take_filter is not None or leave_filter is not None:
-        maybe_indices = maybe_filter.nonzero()[0]
+        maybe_indices = filter_to_indices(maybe_filter)
     else:
         maybe_indices = None
 
     total_underflow = 0
     total_overflow = 0
     total_affected = 0
-    total_indices = []
-    to_split_indices = []
-    to_split_overflow = []
-    for group_idx, members_indices, probability in izip(count(), groups,
-                                                        probabilities):
+
+    aligned = np.zeros(ctx_length, dtype=bool)
+    for members_indices, group_need in izip(groups, need.flat):
         if len(members_indices):
-            if weights is None:
-                expected = len(members_indices) * probability
-            else:
-                expected = np.sum(weights[members_indices]) * probability
-            affected = int(expected)
-            if past_error is not None:
-                group_overflow = past_error[group_idx]
-                if group_overflow != 0:
-                    affected -= group_overflow
-                past_error[group_idx] = 0
-
-            if random.random() < expected - affected:
-                affected += 1
+            affected = group_need
             total_affected += affected
-
             if take_indices is not None:
                 group_always = np.intersect1d(members_indices, take_indices,
                                               assume_unique=True)
-                if weights is None:
-                    num_always = len(group_always)
-                else:
-                    num_always = np.sum(weights[group_always])
-                total_indices.extend(group_always)
+                num_always = len(group_always)
+                aligned[group_always] = True
             else:
                 num_always = 0
-#            pdb.set_trace()
+                  
             if affected > num_always:
                 if maybe_indices is not None:
                     group_maybe_indices = np.intersect1d(members_indices,
@@ -280,94 +115,53 @@ def align_get_indices_nd(context, filter_value, score,
                                                          assume_unique=True)
                 else:
                     group_maybe_indices = members_indices
-                if isinstance(score, np.ndarray) :
-                    maybe_members_rank_value = score[group_maybe_indices]
+                if isinstance(score, np.ndarray):
                     if method=='default':
+                        maybe_members_rank_value = score[group_maybe_indices]
                         sorted_local_indices = np.argsort(maybe_members_rank_value)
                         sorted_global_indices = \
                             group_maybe_indices[sorted_local_indices]
-                    elif method=='walk':
-                        sorted_local_indices = np.random.permutation(group_maybe_indices)
+                    elif method=='sidewalk':
+                        if max(score[group_maybe_indices]) > 1 or min(score[group_maybe_indices]) < 0:
+                            raise Exception("Sidewalk method can be used only with a"
+                                            " score between 0 and 1. You may want to use"
+                                            " a logistic function ")
+
+                        local_indices = range(len(group_maybe_indices))
+                        sorted_local_indices = np.random.permutation(local_indices)
                         sorted_global_indices = \
                             group_maybe_indices[sorted_local_indices]
-                    else :
-                        raise Exception('If not default, method option should be walk')  
-                    
                 else:
-                    assert isinstance(score, (bool, int, float))
                     # if the score expression is a constant, we don't need to
-                    # sort indices. In that case, the alignment will take
-                    # the last individuals created first (highest id).
+                    # sort indices. In that case, the alignment will first take
+                    # the individuals created last (highest id).
                     sorted_global_indices = group_maybe_indices
 
                 # maybe_to_take is always > 0
                 maybe_to_take = affected - num_always
                 if method=='default':
-                    if weights is None:
-                        # take the last X individuals (ie those with the highest
-                        # score)
-                        indices_to_take = sorted_global_indices[-maybe_to_take:]
-                    else:
-                        maybe_weights = weights[sorted_global_indices]
-    
-                        # we need to invert the order because members are sorted
-                        # on score ascendingly and we need to take those with
-                        # highest score.
-                         
-                        weight_sums = np.cumsum(maybe_weights[::-1])
-                        threshold_idx = np.searchsorted(weight_sums, maybe_to_take)
-                        if threshold_idx < len(weight_sums):
-                            num_to_take = threshold_idx + 1
-                            # if there is enough weight to reach "maybe_to_take"
-                            overflow = weight_sums[threshold_idx] - maybe_to_take
-                            if overflow > 0:
-                                # the next individual has too much weight, so we
-                                # need to split it.
-                                id_to_split = sorted_global_indices[threshold_idx]
-                                past_error[group_idx] = overflow
-                                to_split_indices.append(id_to_split)
-                                to_split_overflow.append(overflow)
-                            else:
-                                # we got exactly the number we wanted
-                                assert overflow == 0
-                        else:
-                            # we can't reach our target number of individuals
-                            # (probably because of a "leave" filter), so we
-                            # take all the ones we have
-                            #XXX: should we add *this* underflow to the past_error
-                            # too? It would probably accumulate!
-                            num_to_take = len(weight_sums)
-                        indices_to_take = sorted_global_indices[-num_to_take:]
-                if method=='walk':                    
-                    #U draws a random number and then makes mybe_to_take step of length 1
-                    U=random.random()+np.arange(min(maybe_to_take,len(sorted_global_indices))) 
-                    # if the weoghted case maybe_to_take should be bigger than len(sorted_global_indices, 
-                    # we limit to a vector of size len(sorted_global_indices), and we cut later to have the goo
-                    # weighted value the last indice should then occurs many times at the end of infices_to_take
-                    
+                    # take the last X individuals (ie those with the highest score)
+                    indices_to_take = sorted_global_indices[-maybe_to_take:]
+                elif method=='sidewalk':
+                    U=random()+np.arange(maybe_to_take)             
                     #on the random sample, score are cumulated and then, we extract indices
                     #of each value before each value of U
-                    indices_to_take = np.searchsorted(np.cumsum(score[sorted_local_indices]), U)
-                    indices_to_take = sorted_local_indices[indices_to_take]
-                    #we apply the same sidewalke method and keeping 
-                    # on peut donc enlever ça, si on ne fait plus de weight
-                    if weights is not None:
-                        #TODO: test that case
-                        maybe_weights = weights[indices_to_take]                         
-                        weight_sums = np.cumsum(maybe_weights[::-1])
-                        threshold_idx = np.searchsorted(weight_sums, maybe_to_take)
-                        indices_to_take = indices_to_take[:(threshold_idx+1)]
-                        
+                    score_norm = np.array(score, dtype=float)
+                    score_norm = score_norm * len(sorted_global_indices)/score[sorted_local_indices].sum()
+                    indices_to_take = np.searchsorted(np.cumsum(score_norm[sorted_local_indices]), U)
+                    indices_to_take = sorted_local_indices[indices_to_take] 
                 underflow = maybe_to_take - len(indices_to_take)
                 if underflow > 0:
                     total_underflow += underflow
-                total_indices.extend(indices_to_take)
+                aligned[indices_to_take] = True
             elif affected < num_always:
                 total_overflow += num_always - affected
-# this assertion is only valid in the non weighted case
-#    assert len(total_indices) == \
-#           total_affected + total_overflow - total_underflow
-    print(" %d/%d" % (len(total_indices), num_aligned), end=" ")
+
+    num_aligned = np.sum(aligned)
+    # this assertion is only valid in the non weighted case
+    assert num_aligned == total_affected + total_overflow - total_underflow
+    num_partitioned = sum(len(g) for g in groups)
+    print(" %d/%d" % (num_aligned, num_partitioned), end=" ")
     if (take_filter is not None) or (leave_filter is not None):
         print("[take %d, leave %d]" % (take, leave), end=" ")
     if total_underflow:
@@ -375,248 +169,80 @@ def align_get_indices_nd(context, filter_value, score,
     if total_overflow:
         print("OVERFLOW: %d" % total_overflow, end=" ")
 
-    if to_split_indices:
-        return total_indices, (to_split_indices, to_split_overflow)
-    else:
-        return total_indices, None
+    return aligned
 
 
-class GroupBy(TableExpression):
-#    func_name = 'groupby'
+class AlignmentAbsoluteValues(FilteredExpression):
+    func_name = 'align_abs'
 
-    def __init__(self, *args, **kwargs):
-        assert len(args), "groupby needs at least one expression"
-        #TODO: allow lists/tuples of arguments to group by the combinations
-        # of keys
-        for arg in args:
-            if isinstance(arg, (bool, int, float)):
-                raise TypeError("groupby takes expressions as arguments, "
-                                "not scalar values")
-            if isinstance(arg, (tuple, list)):
-                raise TypeError("groupby takes expressions as arguments, "
-                                "not a list of expressions")
-        self.expressions = args
+    def __init__(self, score, need,
+                 filter=None, take=None, leave=None,
+                 expressions=None, possible_values=None,
+                 errors='default', frac_need='uniform',
+                 link=None, secondary_axis=None,
+                 method='default'):
+        super(AlignmentAbsoluteValues, self).__init__(score, filter)
 
-        # On python 3, we could clean up this code (keyword only arguments).
-        expr = kwargs.pop('expr', None)
-        if expr is None:
-            expr = GroupCount()
-        self.expr = expr
+        if isinstance(need, basestring):
+            fpath = os.path.join(config.input_directory, need)
+            need = load_ndarray(fpath, float)
 
-#        by = kwargs.pop('by', None)
-#        if isinstance(by, Expr):
-#            by = (by,)
-#        self.by = by
+        # need is a single scalar
+        if not isinstance(need, (tuple, list, Expr, np.ndarray)):
+            need = [need]
 
-        self.filter = kwargs.pop('filter', None)
-        self.percent = kwargs.pop('percent', False)
+        # need is a simple list (no expr inside)
+        if isinstance(need, (tuple, list)) and \
+           not any(isinstance(p, Expr) for p in need):
+            need = np.array(need)
 
-        if kwargs:
-            kwarg, _ = kwargs.popitem()
-            raise TypeError("'%s' is an invalid keyword argument for groupby()"
-                            % kwarg)
+        self.need = need
 
-    def evaluate(self, context):
-        expressions = self.expressions
-        columns = [expr_eval(e, context) for e in expressions]
-        if self.filter is not None:
-            filter_value = expr_eval(self.filter, context)
-            #TODO: make a function out of this, I think we have this pattern
-            # in several places
-            filtered_columns = [col[filter_value]
-                                   if isinstance(col, np.ndarray) and col.shape
-                                   else [col]
-                                for col in columns]
+        if expressions is None:
+            expressions = []
+        self.expressions = expressions
+
+        if possible_values is None:
+            possible_values = []
         else:
-            filtered_columns = columns
-
-        possible_values = [np.unique(col) for col in filtered_columns]
-        groups = partition_nd(filtered_columns, True, possible_values)
-
-        #TODO: use group_indices_nd directly to avoid using np.unique
-        # this is twice as fast (unique is very slow) but breaks because
-        # the rest of the code assumes all combinations are present
-#        if self.filter is not None:
-#            filter_value = expr_eval(self.filter, context)
-#        else:
-#            filter_value = True
-#
-#        d = group_indices_nd(columns, filter_value)
-#        pvalues = sorted(d.keys())
-#        ndim = len(columns)
-#        possible_values = [[pv[i] for pv in pvalues]
-#                           for i in range(ndim)]
-#        groups = [d[k] for k in pvalues]
-
-        # groups is a (flat) list of list.
-        # the first variable is the outer-most "loop",
-        # the last one the inner most.
-
-        # add total for each row
-        folded_exprs = len(expressions) - 1
-        len_pvalues = [len(vals) for vals in possible_values]
-        width = len_pvalues[-1]
-        height = prod(len_pvalues[:-1])
-
-        def xy_to_idx(x, y):
-            # divide by the prod of possible values of expressions to its
-            # right, mod by its own number of possible values
-            offsets = [(y / prod(len_pvalues[v + 1:folded_exprs]))
-                       % len_pvalues[v]
-                       for v in range(folded_exprs)]
-            return sum(v * prod(len_pvalues[i + 1:])
-                       for i, v in enumerate(offsets)) + x
-
-        groups_wh_totals = []
-        for y in range(height):
-            line_indices = []
-            for x in range(width):
-                member_indices = groups[xy_to_idx(x, y)]
-                groups_wh_totals.append(member_indices)
-                line_indices.extend(member_indices)
-            groups_wh_totals.append(line_indices)
-
-        # width just increased because of totals
-        width += 1
-
-        # add total for each column (including the "total per row" one)
-        for x in range(width):
-            column_indices = []
-            for y in range(height):
-                column_indices.extend(groups_wh_totals[y * width + x])
-            groups_wh_totals.append(column_indices)
-
-        # evaluate the expression on each group
-        expr = self.expr
-        used_variables = expr.collect_variables(context)
-        used_variables.add('id')
-
-        data = []
-        for member_indices in groups_wh_totals:
-            local_context = context_subset(context, member_indices,
-                                           used_variables)
-            data.append(expr_eval(expr, local_context))
-
-        if self.percent:
-            # convert to np.float64 to get +-inf if total_value is int(0)
-            # instead of Python's built-in behavior of raising an exception.
-            # This can happen at least when using the default expr (grpcount())
-            # and the filter yields empty groups
-            total_value = np.float64(data[-1])
-            data = [100.0 * value / total_value for value in data]
-
-#        if self.by or self.percent:
-#            if self.percent:
-#                total_value = data[-1]
-#                divisors = [total_value for _ in data]
-#            else:
-#                num_by = len(self.by)
-#                inc = prod(len_pvalues[-num_by:])
-#                num_groups = len(groups)
-#                num_categories = prod(len_pvalues[:-num_by])
-#
-#                categories_groups_idx = [range(cat_idx, num_groups, inc)
-#                                         for cat_idx in range(num_categories)]
-#
-#                divisors = ...
-#
-#            data = [100.0 * value / divisor
-#                    for value, divisor in izip(data, divisors)]
-
-        # gender | False | True | total
-        #        |    20 |   16 |    35
-
-        # gender | False | True |
-        #   dead |       |      | total
-        #  False |    20 |   15 |    35
-        #   True |     0 |    1 |     1
-        #  total |    20 |   16 |    36
-
-        #          |   dead | False | True |
-        # agegroup | gender |       |      | total
-        #        5 |  False |    20 |   15 |    xx
-        #        5 |   True |     0 |    1 |    xx
-        #       10 |  False |    25 |   10 |    xx
-        #       10 |   True |     1 |    1 |    xx
-        #          |  total |    xx |   xx |    xx
-
-        # add headers
-        labels = [str(e) for e in expressions]
-        if folded_exprs:
-            result = [[''] * (folded_exprs - 1) +
-                      [labels[-1]] +
-                      list(possible_values[-1]) +
-                      [''],
-                      # 2nd line
-                      labels[:-1] +
-                      [''] * len(possible_values[-1]) +
-                      ['total']]
-            categ_values = list(product(*possible_values[:-1]))
-            last_line = [''] * (folded_exprs - 1) + ['total']
-            categ_values.append(last_line)
-            height += 1
-        else:
-            # if there is only one expression, the headers are different
-            result = [[labels[-1]] + list(possible_values[-1]) + ['total']]
-            categ_values = [['']]
-
-        for y in range(height):
-            result.append(list(categ_values[y]) +
-                          data[y * width:(y + 1) * width])
-
-        return PrettyTable(result)
-
-    def traverse(self, context):
-        for expr in self.expressions:
-            for node in traverse_expr(expr, context):
-                yield node
-        for node in traverse_expr(self.expr, context):
-            yield node
-        for node in traverse_expr(self.filter, context):
-            yield node
-        yield self
-
-    def collect_variables(self, context):
-        variables = set.union(*[collect_variables(expr, context)
-                                for expr in self.expressions])
-        variables |= collect_variables(self.filter, context)
-        variables |= collect_variables(self.expr, context)
-        return variables
-
-
-class Alignment(FilteredExpression):
-    func_name = 'align'
-
-    def __init__(self, score_expr, filter=None, take=None, leave=None,
-                 fname=None,
-                 expressions=None, possible_values=None, probabilities=None,
-                 method='default',
-                 on_overflow='default'):
-        super(Alignment, self).__init__(score_expr, filter)
-
-        assert ((expressions is not None and possible_values is not None and probabilities is not None) or
-                (fname is not None))
-
-        if fname is not None:
-            self.load(fname)
-        else:
-            self.expressions = [Variable(e) if isinstance(e, basestring) else e
-                                for e in expressions]
-            self.possible_values = possible_values
-            self.probabilities = probabilities
+            possible_values = [np.array(pv) for pv in possible_values]
+        self.possible_values = possible_values
 
         self.take_filter = take
         self.leave_filter = leave
-        self.on_overflow = on_overflow
-        self.overflows = None
-        self.method=method
+
+        self.errors = errors
+        self.past_error = None
+
+        self.frac_need = frac_need
+        if frac_need not in ('uniform', 'cutoff', 'round'):
+            raise Exception("frac_need should be one of: 'uniform', 'cutoff' "
+                            "or 'round'")
+
+        self.link = link
+        if secondary_axis is not None and link is None:
+            raise Exception("the 'secondary_axis' argument is only valid in "
+                            "combination with the 'link' argument")
+        if not isinstance(secondary_axis, (type(None), int, Variable)):
+            raise Exception("'secondary_axis' should be either an integer or "
+                            "an axis name")
+        self.secondary_axis = secondary_axis
         
+        if method in ("default","sidewalk") :
+            self.method = method
+        else: 
+            raise Exception("Method for alignment should be either 'default' "
+                            "either 'sidewalk'")
+
+            
     def traverse(self, context):
         for node in FilteredExpression.traverse(self, context):
             yield node
         for expr in self.expressions:
             for node in traverse_expr(expr, context):
                 yield node
+        for node in traverse_expr(self.need, context):
+            yield node
         for node in traverse_expr(self.take_filter, context):
             yield node
         for node in traverse_expr(self.leave_filter, context):
@@ -625,139 +251,365 @@ class Alignment(FilteredExpression):
 
     def collect_variables(self, context):
         variables = FilteredExpression.collect_variables(self, context)
-        if self.expressions:
+        if self.expressions and self.link is None:
             variables |= set.union(*[collect_variables(expr, context)
                                      for expr in self.expressions])
+        variables |= collect_variables(self.need, context)
         variables |= collect_variables(self.take_filter, context)
         variables |= collect_variables(self.leave_filter, context)
         return variables
 
-    def load(self, fpath):
-        from exprparser import parse
+    def _eval_need(self, context):
+        expressions = self.expressions
+        possible_values = self.possible_values
+        if isinstance(self.need, (tuple, list)):
+            need = np.array([expr_eval(e, context) for e in self.need])
+        elif isinstance(self.need, Expr):
+            need = expr_eval(self.need, context)
+            # need was a *scalar* expr
+            if not (isinstance(need, np.ndarray) and need.shape):
+                need = np.array([need])
+        else:
+            need = self.need
 
-        with open(os.path.join(config.input_directory, fpath), "rb") as f:
-            reader = csv.reader(f)
-            lines = skip_comment_cells(strip_rows(reader))
-            header = lines.next()
-            self.expressions = [parse(s, autovariables=True) for s in header]
-            table = []
-            for line in lines:
-                if any(value == '' for value in line):
-                    raise Exception("empty cell found in %s" % fpath)
-                table.append([eval(value) for value in line])
-        ndim = len(header)
-        unique_last_d, dupe_last_d = unique_duplicate(table.pop(0))
-        if dupe_last_d:
-            print("Duplicate column header value(s) (for '%s') in '%s': %s"
-                  % (header[-1], fpath,
-                     ", ".join(str(v) for v in dupe_last_d)))
-            raise Exception("bad alignment data in '%s': found %d "
-                            "duplicate column header value(s)"
-                            % (fpath, len(dupe_last_d)))
+        if isinstance(need, LabeledArray):
+            if not expressions:
+                expressions = [Variable(name)
+                               for name in need.dim_names]
+            if not possible_values:
+                possible_values = need.pvalues
 
-        # strip the ndim-1 first columns
-        headers = [[line.pop(0) for line in table]
-                   for _ in range(ndim - 1)]
+        assert isinstance(need, np.ndarray)
 
-        possible_values = [list(unique(values)) for values in headers]
-        if ndim > 1:
-            # having duplicate values is normal when there are more than 2
-            # dimensions but we need to test whether there are duplicates of
-            # combinations.
-            dupe_combos = list(duplicates(zip(*headers)))
-            if dupe_combos:
-                print("Duplicate row header value(s) in '%s':" % fpath)
-                print(PrettyTable(dupe_combos))
-                raise Exception("bad alignment data in '%s': found %d "
-                                "duplicate row header value(s)"
-                                % (fpath, len(dupe_combos)))
+        if len(expressions) != len(possible_values):
+            raise Exception("align() expressions and possible_values "
+                            "have different length: %d vs %d"
+                            % (len(expressions), len(possible_values)))
 
-        possible_values.append(unique_last_d)
-        self.possible_values = possible_values
-        self.probabilities = list(chain.from_iterable(table))
-        num_possible_values = prod(len(values) for values in possible_values)
-        if len(self.probabilities) != num_possible_values:
-            raise Exception("incoherent alignment data in '%s': %d data cells "
-                            "found while it should be %d based on the number "
-                            "of possible values in headers (%s)"
-                            % (fpath,
-                               len(self.probabilities),
-                               num_possible_values,
-                               ' * '.join(str(len(values))
-                                          for values in possible_values)))
+        if 'period' in [str(e) for e in expressions]:
+            period = context['period']
+            expressions, possible_values, need = \
+                kill_axis('period', period, expressions, possible_values,
+                          need)
+
+        # kill any axis where the value is constant for all individuals
+        # satisfying the filter
+#        tokill = [(expr, column[0])
+#                  for expr, column in zip(expressions, columns)
+#                  if isconstant(column, filter_value)]
+#        for expr, value in tokill:
+#            expressions, possible_values, need = \
+#                kill_axis(str(expr), value, expressions, possible_values,
+#                          need)
+
+        return need, expressions, possible_values
+
+    def _handle_frac_need(self, need):
+        # handle the "fractional people problem"
+        if not issubclass(need.dtype.type, np.integer):
+            if self.frac_need == 'uniform':
+                int_need = need.astype(int)
+                u = np.random.uniform(size=need.shape)
+                need = int_need + (u < need - int_need)
+            elif self.frac_need == 'cutoff':
+                int_need = need.astype(int)
+                frac_need = need - int_need
+                need = int_need
+
+                # the sum of fractional objects number of extra objects we want
+                # aligned
+                extra_wanted = int(round(np.sum(frac_need)))
+                if extra_wanted:
+                    # search cutoff that yield
+                    # sum(frac_need >= cutoff) == extra_wanted
+                    sorted_frac_need = frac_need.flatten()
+                    sorted_frac_need.sort()
+                    cutoff = sorted_frac_need[-extra_wanted]
+                    extra = frac_need >= cutoff
+                    if np.sum(extra) > extra_wanted:
+                        # This case can only happen when several bins have the
+                        # same frac_need. In this case we could try to be even
+                        # closer to our target by randomly selecting X out of
+                        # the Y bins which have a frac_need equal to the
+                        # cutoff.
+                        assert np.sum(frac_need == cutoff) > 1
+                    need += extra
+            elif self.frac_need == 'round':
+                # always use 0.5 as a cutoff point
+                need = (need + 0.5).astype(int)
+
+        assert issubclass(need.dtype.type, np.integer)
+        return need
+
+    def _add_past_error(self, need, context):
+        errors = self.errors
+        if errors == 'default':
+            errors = context.get('__on_align_error__')
+
+        if errors == 'carry':
+            if self.past_error is None:
+                self.past_error = np.zeros(need.shape, dtype=int)
+
+            print("adding %d individuals from last period error"
+                  % np.sum(self.past_error))
+            need += self.past_error
+
+        return need
+
+    def _display_unaligned(self, expressions, ids, columns, unaligned):
+        print("Warning: %d individual(s) do not fit in any alignment "
+              "category" % np.sum(unaligned))
+        header = ['id'] + [str(e) for e in expressions]
+        columns = [ids] + columns
+        num_rows = len(ids)
+        print(PrettyTable([header] +
+                          [[col[row] for col in columns]
+                           for row in range(num_rows) if unaligned[row]]))
 
     def evaluate(self, context):
+        if self.link is None:
+            return self.align_no_link(context)
+        else:
+            return self.align_link(context)
+
+    def align_no_link(self, context):
+        ctx_length = context_length(context)
+
         scores = expr_eval(self.expr, context)
 
-        on_overflow = self.on_overflow
-        if on_overflow == 'default':
-            on_overflow = context.get('__on_align_overflow__', 'carry')
+        need, expressions, possible_values = self._eval_need(context)
 
-        #XXX: I should try to pre-parse weight_col in the entity, rather than
-        # here, possibly allowing expressions. Not sure it has any use, but it
-        # should not cost us much
-        weight_col = context.get('__weight_col__')
-        if weight_col is not None:
-            weights = expr_eval(Variable(weight_col), context)
-            if on_overflow == 'carry' and self.overflows is None:
-                self.overflows = np.zeros(len(self.probabilities))
+        filter_value = expr_eval(self._getfilter(context), context)
+        take_filter = expr_eval(self.take_filter, context)
+        leave_filter = expr_eval(self.leave_filter, context)
+
+        if filter_value is not None:
+            num_to_align = np.sum(filter_value)
         else:
-            weights = None
+            num_to_align = ctx_length
 
-        ctx_filter = context.get('__filter__')
-        if self.filter is not None:
-            if ctx_filter is not None:
-                filter_expr = ctx_filter & self.filter
+        if expressions:
+            # retrieve the columns we need to work with
+            columns = [expr_eval(expr, context) for expr in expressions]
+            if filter_value is not None:
+                groups = partition_nd(columns, filter_value, possible_values)
             else:
-                filter_expr = self.filter
+                groups = partition_nd(columns, True, possible_values)
         else:
-            if ctx_filter is not None:
-                filter_expr = ctx_filter
+            if filter_value is not None:
+                groups = [filter_to_indices(filter_value)]
             else:
-                filter_expr = None
+                groups = [np.arange(num_to_align)]
 
+        # the sum is not necessarily equal to len(a), because some individuals
+        # might not fit in any group (eg if some alignment data is missing)
+        if sum(len(g) for g in groups) < num_to_align:
+            unaligned = np.ones(ctx_length, dtype=bool)
+            if filter_value is not None:
+                unaligned[~filter_value] = False
+            for member_indices in groups:
+                unaligned[member_indices] = False
+            self._display_unaligned(expressions, context['id'], columns,
+                                    unaligned)
+
+        need = need * self._get_need_correction(groups, possible_values)
+        need = self._handle_frac_need(need)
+        need = self._add_past_error(need, context)
+
+        return align_get_indices_nd(ctx_length, groups, need, filter_value,
+                                    scores, take_filter, leave_filter, self.method)
+
+    #TODO: somehow merge these two functions with LinkExpression or move them
+    # to the Link class
+    def target_entity(self, context):
+        return entity_registry[self.link._target_entity]
+
+    def target_context(self, context):
+        target_entity = self.target_entity(context)
+        return EntityContext(target_entity,
+                             {'period': context['period'],
+                             '__globals__': context['__globals__']})
+
+    def align_link(self, context):
+        scores = expr_eval(self.expr, context)
+
+        need, expressions, possible_values = self._eval_need(context)
+        need = self._handle_frac_need(need)
+        need = self._add_past_error(need, context)
+
+        # handle secondary axis
+        secondary_axis = self.secondary_axis
+        if isinstance(secondary_axis, Expr):
+            axis_name = str(secondary_axis)
+            try:
+                secondary_axis = need.dim_names.index(axis_name)
+            except ValueError:
+                raise ValueError("invalid value for secondary_axis: there is "
+                                 "no axis named '%s' in the need array"
+                                 % axis_name)
+        else:
+            if secondary_axis >= need.ndim:
+                raise Exception("%d is an invalid value for secondary_axis: "
+                                "it should be smaller than the number of "
+                                "dimension of the need array (%d)"
+                                % (secondary_axis, need.ndim))
+
+        # evaluate columns
+        target_context = self.target_context(context)
+        target_columns = [expr_eval(e, target_context) for e in expressions]
+        # this is a one2many, so the link column is on the target side
+        link_column = expr_eval(Variable(self.link._link_field),
+                                target_context)
+
+        filter_expr = self._getfilter(context)
         if filter_expr is not None:
-            filter_value = expr_eval(filter_expr, context)
+            reverse_link = Link("reverse", "many2one", self.link._link_field,
+                                context['__entity__'].name)
+            target_filter = LinkValue(reverse_link, filter_expr, False)
+            target_filter_value = expr_eval(target_filter, target_context)
+
+            # It is often not a good idea to pre-filter columns like this
+            # because we loose information about "indices", but in this case,
+            # it is fine, because we do not need that information afterwards.
+            filtered_columns = [col[target_filter_value]
+                                  if isinstance(col, np.ndarray) and col.shape
+                                  else [col]
+                                for col in target_columns]
+
+            link_column = link_column[target_filter_value]
         else:
-            filter_value = None
+            filtered_columns = target_columns
+            target_filter_value = None
 
-        take_filter = expr_eval(self.take_filter, context) \
-                      if self.take_filter is not None else None
-        leave_filter = expr_eval(self.leave_filter, context) \
-                       if self.leave_filter is not None \
-                       else None
+        # compute labels for filtered columns
+        # -----------------------------------
+        # We can't use _group_labels_light because group_labels assigns labels
+        # on a first come, first served basis, not using the order they are
+        # in pvalues
+        fcols_labels = []
+        filtered_length = len(filtered_columns[0])
+        unaligned = np.zeros(filtered_length, dtype=bool)
+        for fcol, pvalues in zip(filtered_columns, need.pvalues):
+            pvalues_index = dict((v, i) for i, v in enumerate(pvalues))
+            fcol_labels = np.empty(filtered_length, dtype=np.int32)
+            for i in range(filtered_length):
+                value_idx = pvalues_index.get(fcol[i], -1)
+                if value_idx == -1:
+                    unaligned[i] = True
+                fcol_labels[i] = value_idx
+            fcols_labels.append(fcol_labels)
 
-        indices, overflows = \
-            align_get_indices_nd(context, filter_value, scores,
-                                 self.expressions, self.possible_values,
-                                 self.probabilities,
-                                 take_filter, leave_filter, weights,
-                                 self.overflows,self.method)
+        num_unaligned = np.sum(unaligned)
+        if num_unaligned:
+            # further filter label columns and link_column
+            validlabels = ~unaligned
+            fcols_labels = [labels[validlabels] for labels in fcols_labels]
+            link_column = link_column[validlabels]
 
-        if overflows is not None:
-            to_split_indices, to_split_overflow = overflows
-            if on_overflow == 'split':
-                num_birth = len(to_split_indices)
-                source_entity = context['__entity__']
-                target_entity = source_entity
-                array = target_entity.array
-                clones = array[to_split_indices]
-                id_to_rownum = target_entity.id_to_rownum
-                num_individuals = len(id_to_rownum)
-                clones['id'] = np.arange(num_individuals,
-                                         num_individuals + num_birth)
-                #FIXME: self.weight_col is not defined
-                clones[self.weight_col] = to_split_overflow
-                array[self.weight_col][to_split_indices] -= to_split_overflow
-                add_individuals(context, clones)
+            # display who are the evil ones
+            ids = target_context['id']
+            if target_filter_value is not None:
+                filtered_ids = ids[target_filter_value]
+            else:
+                filtered_ids = ids
+            self._display_unaligned(expressions, filtered_ids,
+                                    filtered_columns, unaligned)
+        else:
+            del unaligned
 
-        return {'values': True, 'indices': indices}
+        id_to_rownum = context.id_to_rownum
+        missing_int = missing_values[int]
+        source_ids = link_column
+
+        if len(id_to_rownum):
+            source_rows = id_to_rownum[source_ids]
+            # filter out missing values: those where the value of the link
+            # points to nowhere (-1)
+            source_rows[source_ids == missing_int] = missing_int
+        else:
+            assert np.all(source_ids == missing_int)
+            source_rows = []
+
+        # filtered_columns are not filtered further on invalid labels
+        # (num_unaligned) but this is not a problem since those will be
+        # ignored by GroupBy anyway.
+        groupby_expr = GroupBy(*filtered_columns, pvalues=possible_values)
+
+        # target_context is not technically correct, as it is not "filtered"
+        # while filtered_columns are, but since we don't use the context
+        # "columns", it does not matter.
+        num_candidates = expr_eval(groupby_expr, target_context)
+
+        # fetch the list of linked individuals for each local individual.
+        # e.g. the list of person ids for each household
+        hh = np.empty(context_length(context), dtype=object)
+        # we can't use .fill([]) because it reuses the same list for all
+        # objects
+        for i in range(len(hh)):
+            hh[i] = []
+
+        # Even though this is highly sub-optimal, the time taken to create
+        # those lists of ids is very small compared to the total time taken
+        # for align_other (0.2s vs 4.26), so I shouldn't care too much about
+        # it for now.
+
+        # target_row is an index valid for *filtered/label* columns !
+        for target_row, source_row in enumerate(source_rows):
+            if source_row == -1:
+                continue
+            hh[source_row].append(target_row)
+
+        aligned, error = \
+            align_link_nd(scores, need, num_candidates, hh, fcols_labels,
+                          secondary_axis)
+        self.past_error = error
+        return aligned
+
+    def _get_need_correction(self, groups, possible_values):
+        return 1
 
     def dtype(self, context):
         return bool
 
 
+class Alignment(AlignmentAbsoluteValues):
+    func_name = 'align'
+
+    def __init__(self, score=None, proportions=None,
+                 filter=None, take=None, leave=None,
+                 expressions=None, possible_values=None,
+                 errors='default', frac_need='uniform',
+                 method='default', fname=None):
+
+        if possible_values is not None:
+            if expressions is None or len(possible_values) != len(expressions):
+                raise Exception("align() expressions and possible_values "
+                                "arguments should have the same length")
+
+        if proportions is None and fname is None:
+            raise Exception("align() needs either an fname or proportions "
+                            "arguments")
+        if proportions is not None and fname is not None:
+            raise Exception("align() cannot have both fname and proportions "
+                            "arguments")
+        if fname is not None:
+            proportions = fname
+   
+        link=None
+        secondary_axis=None
+        super(Alignment, self).__init__(score, proportions,
+                                        filter, take, leave,
+                                        expressions, possible_values,
+                                        errors, frac_need, link, 
+                                        secondary_axis,method)
+
+    def _get_need_correction(self, groups, possible_values):
+        data = np.array([len(group) for group in groups])
+        len_pvalues = [len(vals) for vals in possible_values]
+        return data.reshape(len_pvalues)
+
+
 functions = {
-    'align': Alignment,
-    'groupby': GroupBy
+    'align_abs': AlignmentAbsoluteValues,
+    'align': Alignment
 }

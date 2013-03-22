@@ -1,8 +1,11 @@
 import numpy as np
 
-from properties import Log, Exp, Normal, Max, CompoundExpression
+from expr import (Expr, Variable, ShortLivedVariable, get_tmp_varname,
+                  missing_values, dtype, expr_eval)
+from exprbases import CompoundExpression
+from exprmisc import Log, Exp, Normal, Max, Where
 from alignment import Alignment
-from expr import Expr, Variable, ShortLivedVariable, get_tmp_varname
+
 from context import context_length
 
 
@@ -26,23 +29,25 @@ class Regression(CompoundExpression):
     def build_context(self, context):
         return context
 
-#TODO: this fixes the filter problem for non-aligned regression, but breaks
-#      aligned ones (logit_regr):
-#      * the score expr is Alignment(LogitScore(xxx), filter=filter)
-#      * Alignment.eval() returns {'values': True, 'indices': indices}
-#      * Regression.eval() returns {'filter': filter,
-#                                   'values': {'values': Trues,
-#                                              'indices': indices}}
-#      * this is not supported by Assignment.store_result
+    def build_expr(self):
+        raise NotImplementedError
 
-#    def eval(self, context):
-#        context = self.build_context(context)
-#        result = self.complete_expr.eval(context)
-#        if self.filter is not None:
-#            filter = expr_eval(self.filter, context)
-#            return {'filter': filter, 'values': result}
-#        else:
-#            return result
+    def add_filter(self, expr, context):
+        if self.filter is not None:
+            missing_value = missing_values[dtype(expr, context)]
+            return Where(self.filter, expr, missing_value)
+        else:
+            return expr
+
+    def evaluate(self, context):
+        context = self.build_context(context)
+        expr = self.add_filter(self.complete_expr, context)
+        return expr_eval(expr, context)
+
+    def as_simple_expr(self, context):
+        context = self.build_context(context)
+        expr = self.add_filter(self.complete_expr, context)
+        return expr.as_simple_expr(context)
 
     def dtype(self, context):
         return float
@@ -68,12 +73,6 @@ class LogitScore(CompoundExpression):
         if not isinstance(expr, Expr) and not expr:
             expr = u
         else:
-            # In some case, the expression could crash LIAM's interpreter:
-            # logit(-1000) => logistic(-1000.0 + epsilon) => exp(1000)
-            # => overflow, so LIAM uses "exp(min(expr, 99))" instead.
-            # However, this is not needed here since numpy/numexpr handles
-            # overflows nicely with "inf".
-            # The maximum value before exp overflows is 709.
             epsilon = logit(u)
             expr = logistic(expr - epsilon)
         return expr
@@ -88,29 +87,27 @@ class LogitScore(CompoundExpression):
 class LogitRegr(Regression):
     func_name = 'logit_regr'
 
-    def __init__(self, expr, filter=None, align=False):
+    def __init__(self, expr, filter=None, align=None, method='default'):
         Regression.__init__(self, expr, filter)
-        if isinstance(align, float):
-            align_kwargs = {'expressions': [],
-                            'possible_values': [],
-                            'probabilities': [align]}
-        elif isinstance(align, basestring):
-            align_kwargs = {'fname': align}
-        else:
-            assert not align, "invalid value for align argument"
-            align_kwargs = None
-        self.align_kwargs = align_kwargs
-
+        self.align = align
+        self.method = method
     def build_context(self, context):
         return context
 
     def build_expr(self):
         score_expr = LogitScore(self.expr)
-        if self.align_kwargs is not None:
-            return Alignment(score_expr, self.filter,
-                             **self.align_kwargs)
+        if self.align is not None:
+            return Alignment(score_expr, self.align, filter=self.filter,
+                              method=self.method)
         else:
             return score_expr > 0.5
+
+    # this is an optimisation: Alignment already handles the filter
+    def add_filter(self, expr, context):
+        if self.align is not None:
+            return expr
+        else:
+            return super(LogitRegr, self).add_filter(expr, context)
 
     def dtype(self, context):
         return bool
@@ -144,8 +141,6 @@ class LogRegr(ContRegr):
     func_name = 'log_regr'
 
     def build_expr(self):
-        # exp(x) overflows for x > 709 but that is handled gracefully by numpy
-        # and numexpr
         return Exp(ContRegr.build_expr(self))
 
 

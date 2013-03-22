@@ -2,7 +2,7 @@ import numpy as np
 
 from utils import safe_put
 from expr import expr_eval, dtype, hasvalue
-from properties import FunctionExpression
+from exprbases import FunctionExpression
 
 
 class ValueForPeriod(FunctionExpression):
@@ -29,7 +29,7 @@ class Lag(FunctionExpression):
 
     def evaluate(self, context):
         entity = context['__entity__']
-        period = context['period'] - self.num_periods
+        period = context['period'] - expr_eval(self.num_periods, context)
         return entity.value_for_period(self.expr, period, context,
                                        self.missing)
 
@@ -55,7 +55,7 @@ class Duration(FunctionExpression):
         last_period_true.fill(period + 1)
 
         id_to_rownum = context.id_to_rownum
-        still_running = value
+        still_running = value.copy()
         while np.any(still_running) and period >= baseperiod:
             ids, values = entity.value_for_period(bool_expr, period, context,
                                                   fill=None)

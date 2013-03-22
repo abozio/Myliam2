@@ -1,17 +1,15 @@
 #import carray as ca
 import numpy as np
-
-
-from utils import safe_put, count_occurences
-from data import mergeArrays, get_fields
-from registry import entity_registry
-from expr import Variable, SubscriptableVariable, \
-                 expr_eval, get_missing_value
-from exprparser import parse
-from context import EntityContext, context_length
 import tables
 
-str_to_type = {'float': float, 'int': int, 'bool': bool}
+from utils import safe_put, count_occurences, field_str_to_type
+from data import mergeArrays, get_fields
+from registry import entity_registry
+from expr import (Variable, GlobalVariable, GlobalTable, GlobalArray,
+                  expr_eval, get_missing_value)
+from exprparser import parse
+from context import EntityContext, context_length
+from process import Assignment, Compute, Process, ProcessGroup
 
 
 #def compress_column(a, level):
@@ -30,7 +28,7 @@ class Entity(object):
     fields is a list of tuple (name, type, options)
     '''
     def __init__(self, name, fields, missing_fields=None, links=None,
-                 macro_strings=None, process_strings=None, weight_col=None,
+                 macro_strings=None, process_strings=None,
                  on_align_overflow='carry'):
         self.name = name
 
@@ -41,8 +39,12 @@ class Entity(object):
         if duplicate_names:
             raise Exception("duplicate fields in entity '%s': %s"
                             % (self.name, ', '.join(duplicate_names)))
-
-        self.fields = [('period', int), ('id', int)] + fields
+        fnames = [name for name, _ in fields]
+        if 'id' not in fnames:
+            fields.insert(0, ('id', int))
+        if 'period' not in fnames:
+            fields.insert(0, ('period', int))
+        self.fields = fields
 
         # only used in data (to check that all "required" fields are present
         # in the input file)
@@ -60,7 +62,6 @@ class Entity(object):
         self.period_individual_fnames = [name for name, _ in fields]
         self.links = links
 
-        self.weight_col = weight_col
         self.on_align_overflow = on_align_overflow
 
         self.macro_strings = macro_strings
@@ -74,9 +75,7 @@ class Entity(object):
         self.indexed_output_table = None
 
         self.input_rows = {}
-        #XXX: it might be unnecessary to keep it in memory after the initial
-        # load.
-        #TODO: it *is* unnecessary to keep periods which have already been
+        #TODO: it is unnecessary to keep periods which have already been
         # simulated, because (currently) when we go back in time, we always go
         # back using the output table.
         self.input_index = {}
@@ -85,9 +84,12 @@ class Entity(object):
         self.output_index = {}
 
         self.base_period = None
+        # we need a separate field, instead of using array['period'] to be able
+        # to get the period even when the array is empty.
+        self.array_period = None
         self.array = None
 
-        self.lag_fields = None
+        self.lag_fields = []
         self.array_lag = None
 
         self.num_tmp = 0
@@ -114,7 +116,8 @@ class Entity(object):
                     missing_fields.append(name)
             else:
                 strtype = fielddef
-            fields.append((name, str_to_type[strtype]))
+            fields.append((name,
+                           field_str_to_type(strtype, "field '%s'" % name)))
 
         link_defs = entity_def.get('links', {})
         links = dict((name, Link(name, l['type'], l['field'], l['target']))
@@ -123,8 +126,7 @@ class Entity(object):
         #TODO: add option for on_align_overflow
         return Entity(ent_name, fields, missing_fields, links,
                       entity_def.get('macros', {}),
-                      entity_def.get('processes', {}),
-                      entity_def.get('weight'))
+                      entity_def.get('processes', {}))
 
     @classmethod
     def from_table(cls, table):
@@ -160,6 +162,25 @@ class Entity(object):
             self._variables = variables
         return self._variables
 
+    def global_variables(self, globals_def):
+        #FIXME: these should be computed once somewhere else, not for each
+        # entity. I guess they should have a class of their own
+        variables = {}
+        for name, global_type in globals_def.iteritems():
+            if isinstance(global_type, list):
+                # add namespace for table
+                variables[name] = GlobalTable(name, global_type)
+                if name == 'periodic':
+                    # special case to add periodic variables in the global
+                    # namespace
+                    variables.update(
+                        (name, GlobalVariable('periodic', name, type_))
+                        for name, type_ in global_type)
+            else:
+                assert isinstance(global_type, type)
+                variables[name] = GlobalArray(name, global_type)
+        return variables
+
     def check_links(self):
         for name, link in self.links.iteritems():
             target_name = link._target_entity
@@ -179,61 +200,64 @@ class Entity(object):
                 cond_context[name] = target_entity.variables
         return cond_context
 
-    def parse_processes(self, globals):
-        from properties import Assignment, Compute, Process, ProcessGroup
+    def all_variables(self, globals_def):
         from links import PrefixingLink
-        variables = dict((name, SubscriptableVariable(name, type_))
-                         for name, type_ in globals)
+
+        variables = self.global_variables(globals_def).copy()
         variables.update(self.variables)
         cond_context = self.conditional_context
         macros = dict((k, parse(v, variables, cond_context))
                       for k, v in self.macro_strings.iteritems())
-        variables['other'] = PrefixingLink(macros, self.links, '__other_')
-
         variables.update(macros)
+        variables['other'] = PrefixingLink(macros, self.links, '__other_')
+        return variables
 
-        def parse_expressions(items, variables):
-            processes = []
-            for k, v in items:
-                if isinstance(v, (bool, int, float)):
-                    process = Assignment(v)
-                elif isinstance(v, basestring):
-                    expr = parse(v, variables, cond_context)
-                    if not isinstance(expr, Process):
-                        if k is None:
-                            process = Compute(expr)
-                        else:
-                            process = Assignment(expr)
+    def parse_expressions(self, items, variables, cond_context):
+        processes = []
+        for k, v in items:
+            if isinstance(v, (bool, int, float)):
+                process = Assignment(v)
+            elif isinstance(v, basestring):
+                expr = parse(v, variables, cond_context)
+                if not isinstance(expr, Process):
+                    if k is None:
+                        process = Compute(expr)
                     else:
-                        process = expr
-                elif isinstance(v, list):
-                    # v should be a list of dict
-                    group_expressions = []
-                    for element in v:
-                        if isinstance(element, dict):
-                            group_expressions.append(element.items()[0])
-                        else:
-                            group_expressions.append((None, element))
-                    group_predictors = \
-                        self.collect_predictors(group_expressions)
-                    group_context = variables.copy()
-                    group_context.update((name, Variable(name))
-                                         for name in group_predictors)
-                    sub_processes = parse_expressions(group_expressions,
-                                                      group_context)
-                    process = ProcessGroup(k, sub_processes)
-                elif isinstance(v, dict):
-                    expr = parse(v['expr'], variables, cond_context)
-                    process = Assignment(expr)
-                    process.predictor = v['predictor']
+                        process = Assignment(expr)
                 else:
-                    raise Exception("unknown expression type for %s: %s"
-                                    % (k, type(v)))
-                processes.append((k, process))
-            return processes
+                    process = expr
+            elif isinstance(v, list):
+                # v should be a list of dict
+                group_expressions = []
+                for element in v:
+                    if isinstance(element, dict):
+                        group_expressions.append(element.items()[0])
+                    else:
+                        group_expressions.append((None, element))
+                group_predictors = \
+                    self.collect_predictors(group_expressions)
+                group_context = variables.copy()
+                group_context.update((name, Variable(name))
+                                     for name in group_predictors)
+                sub_processes = self.parse_expressions(group_expressions,
+                                                       group_context,
+                                                       cond_context)
+                process = ProcessGroup(k, sub_processes)
+            elif isinstance(v, dict):
+                expr = parse(v['expr'], variables, cond_context)
+                process = Assignment(expr)
+                process.predictor = v['predictor']
+            else:
+                raise Exception("unknown expression type for %s: %s"
+                                % (k, type(v)))
+            processes.append((k, process))
+        return processes
 
-        processes = dict(parse_expressions(self.process_strings.iteritems(),
-                                           variables))
+    def parse_processes(self, globals_def):
+        processes = self.parse_expressions(self.process_strings.iteritems(),
+                                           self.all_variables(globals_def),
+                                           self.conditional_context)
+        processes = dict(processes)
 
         fnames = set(self.period_individual_fnames)
 
@@ -263,7 +287,8 @@ class Entity(object):
             for expr in p.expressions():
                 for node in expr.allOf(Lag):
                     for v in node.allOf(Variable):
-                        lag_vars.add(v.name)
+                        if not isinstance(v, GlobalVariable):
+                            lag_vars.add(v.name)
                     for lv in node.allOf(LinkValue):
                         link = lv.get_link({'__entity__': self})
                         lag_vars.add(link._link_field)
@@ -273,14 +298,24 @@ class Entity(object):
                             target_vars = lv.target_expression.allOf(Variable)
                             lag_vars.update(v.name for v in target_vars)
 
-        # make sure 'id' comes first
-        lag_vars.discard('id')
-        lag_vars = ['id'] + sorted(lag_vars)
+        if lag_vars:
+            # make sure we have an 'id' column, and that it comes first
+            # (makes debugging easier). 'id' is always necessary for lag
+            # expressions to be able to "expand" the vector of values to the
+            # "current" individuals.
+            lag_vars.discard('id')
+            lag_vars = ['id'] + sorted(lag_vars)
 
         field_type = dict(self.fields)
         self.lag_fields = [(v, field_type[v]) for v in lag_vars]
 
     def load_period_data(self, period):
+        if self.lag_fields:
+            self.array_lag = np.empty(len(self.array),
+                                      dtype=np.dtype(self.lag_fields))
+            for field, _ in self.lag_fields:
+                self.array_lag[field] = self.array[field]
+
         rows = self.input_rows.get(period)
         if rows is None:
             # nothing needs to be done in that case
@@ -310,10 +345,6 @@ class Entity(object):
         if period in self.output_rows:
             raise Exception("trying to modify already simulated rows")
         else:
-            self.array_lag = np.empty(len(self.array),
-                                      dtype=np.dtype(self.lag_fields))
-            for field, _ in self.lag_fields:
-                self.array_lag[field] = self.array[field]
             startrow = self.table.nrows
             self.table.append(self.array)
             self.output_rows[period] = (startrow, self.table.nrows)
@@ -345,7 +376,9 @@ class Entity(object):
         return result
 
     def value_for_period(self, expr, period, context, fill='auto'):
-        sub_context = EntityContext(self, {'period': period})
+        sub_context = EntityContext(self, 
+                                    {'period': period,
+                                     '__globals__': context['__globals__']})
         result = expr_eval(expr, sub_context)
         if isinstance(result, np.ndarray) and result.shape:
             ids = expr_eval(Variable('id'), sub_context)

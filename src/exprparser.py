@@ -1,27 +1,25 @@
 from __future__ import division
 
-import re
+import ast
 
-from expr import add_context, Variable
+from expr import Variable
+from utils import add_context
 
 
-import expr
-import alignment
-import matching
-import properties
 import actions
-import regressions
+import aggregates
+import alignment
+import groupby
 import links
+import matching
+import exprmisc
+import regressions
 import tfunc
 
 functions = {}
-for module in (expr, alignment, matching, properties, actions, regressions,
-               links, tfunc):
+for module in (actions, aggregates, alignment, groupby, links, matching,
+               exprmisc, regressions, tfunc):
     functions.update(module.functions)
-
-and_re = re.compile('([ )])and([ (])')
-or_re = re.compile('([ )])or([ (])')
-not_re = re.compile(r'([ (=]|^)not(?=[ (])')
 
 
 #class Token(object):
@@ -39,20 +37,63 @@ not_re = re.compile(r'([ (=]|^)not(?=[ (])')
 #        self.attr = key
 
 
-def parse(s, globals=None, conditional_context=None, expression=True,
+class BoolToBitTransformer(ast.NodeTransformer):
+    def visit_BoolOp(self, node):
+        # first transform children of the node
+        self.generic_visit(node)
+
+        # using a dict doesn't seem to work
+        if isinstance(node.op, ast.And):
+            new_op = ast.BitAnd()
+        else:
+            assert isinstance(node.op, ast.Or)
+            new_op = ast.BitOr()
+        values = node.values
+        right = values.pop()
+        while len(values):
+            left = values.pop()
+            right = ast.copy_location(ast.BinOp(left, new_op, right), node)
+        return right
+
+    def visit_Not(self, node):
+        return ast.Invert()
+
+
+def parse(s, globals=None, conditional_context=None, interactive=False,
           autovariables=False):
     if not isinstance(s, basestring):
         return s
 
     # this prevents any function named something ending in "if"
     str_to_parse = s.replace('if(', 'where(')
-    str_to_parse = and_re.sub(r'\1&\2', str_to_parse)
-    str_to_parse = or_re.sub(r'\1|\2', str_to_parse)
-    str_to_parse = not_re.sub(r'\1~', str_to_parse)
+    tree = ast.parse(str_to_parse)
+    tree = BoolToBitTransformer().visit(tree)
+    body = tree.body
 
-    mode = 'eval' if expression else 'exec'
+    # disable for now because it is not very useful yet. To be useful, I need
+    # to implement:
+    # * Expr.__setitem__
+    # * keep the same context across several expressions in the interactive
+    #   console
+#    if interactive:
+    if False:
+        if len(body) == 0:
+            to_compile = []
+        else:
+            # if the last statement is an expression, move it out and
+            # use eval() on it instead of exec
+            if isinstance(body[-1], ast.Expr):
+                to_compile = [('exec', ast.Module(body[:-1])),
+                              ('eval', ast.Expression(body[-1].value))]
+            else:
+                to_compile = [('exec', tree)]
+    else:
+        assert len(body) == 1 and isinstance(body[0], ast.Expr)
+        to_compile = [('eval', ast.Expression(body[0].value))]
+
     try:
-        c = compile(str_to_parse, '<expr>', mode)
+        to_eval = [(mode, compile(code, '<expr>', mode))
+                   for mode, code in to_compile]
     except SyntaxError:
         # SyntaxError are clearer if left unmodified since they already contain
         # the faulty string
@@ -69,8 +110,9 @@ def parse(s, globals=None, conditional_context=None, expression=True,
                'nan': float('nan')}
 
     if autovariables:
-        varnames = c.co_names
-        context.update((name, Variable(name)) for name in varnames)
+        for _, code in to_eval:
+            varnames = code.co_names
+            context.update((name, Variable(name)) for name in varnames)
 #        context.update((name, Token(name)) for name in varnames)
 
     #FIXME: this whole conditional context feature is a huge hack.
@@ -88,28 +130,34 @@ def parse(s, globals=None, conditional_context=None, expression=True,
     # it's not as easy as I first thought because functions need to be
     # delayed too.
     if conditional_context is not None:
-        for var in c.co_names:
-            if var in conditional_context:
-                context.update(conditional_context[var])
+        for _, code in to_eval:
+            for var in code.co_names:
+                if var in conditional_context:
+                    context.update(conditional_context[var])
 
     context.update(functions)
     if globals is not None:
         context.update(globals)
 
     context['__builtins__'] = None
-    if expression:
-        try:
-            return eval(c, context)
-        #IOError and such. Those are clearer when left unmodified.
-        except EnvironmentError:
-            raise
-        except Exception, e:
-            raise add_context(e, s)
-    else:
-        exec c in context
+    for mode, compiled_code in to_eval:
+        if mode == 'exec':
+            #XXX: use "add_context" on exceptions?
+            exec compiled_code in context
 
-        # cleanup result
-        del context['__builtins__']
-        for funcname in functions.keys():
-            del context[funcname]
-        return context
+            # cleanup result. I tried different things to not get the context
+            # "polluted" by builtins but could not achieve that, so I cleanup
+            # after the fact.
+            del context['__builtins__']
+            for funcname in functions.keys():
+                del context[funcname]
+        else:
+            assert mode == 'eval'
+            try:
+                return eval(compiled_code, context)
+            # IOError and such. Those are clearer when left unmodified.
+            except EnvironmentError:
+                raise
+            except Exception, e:
+                raise add_context(e, s)
+

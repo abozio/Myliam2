@@ -2,20 +2,21 @@ from itertools import izip, groupby
 from operator import itemgetter
 
 import numpy as np
+import numexpr as ne
 
-from expr import Variable, dtype, expr_eval, \
-                 missing_values, get_missing_value
+from expr import Variable, dtype, expr_eval, missing_values, get_missing_value
+from exprbases import EvaluableExpression
 from context import EntityContext, context_length
 from registry import entity_registry
-from properties import EvaluableExpression
 
-import pdb
 
 class Link(object):
     def __init__(self, name, link_type, link_field, target_entity):
         # the leading underscores are necessary to not collide with
         # user-defined fields via __getattr__.
         self._name = name
+        assert link_type in ('many2one', 'one2many'), \
+               "link type should be either 'many2one' or 'one2many'"
         self._link_type = link_type
         self._link_field = link_field
         self._target_entity = target_entity
@@ -76,7 +77,9 @@ class LinkExpression(EvaluableExpression):
 
     def target_context(self, context):
         target_entity = self.target_entity(context)
-        return EntityContext(target_entity, {'period': context['period']})
+        return EntityContext(target_entity,
+                             {'period': context['period'],
+                             '__globals__': context['__globals__']})
 
     #XXX: I think this is not enough. Implement Visitor pattern instead?
     def traverse(self, context):
@@ -134,8 +137,13 @@ class LinkValue(LinkExpression):
         if missing_value is None:
             missing_value = get_missing_value(target_values)
 
-        valid_link = (target_ids != missing_int) & (target_rows != missing_int)
-        return np.where(valid_link, target_values[target_rows], missing_value)
+        result_values = target_values[target_rows]
+
+        # it is a bit faster with numexpr (mixed_links: 0.22s -> 0.17s)
+        return ne.evaluate("where((ids != mi) & (rows != mi), values, mv)",
+                           {'ids': target_ids, 'rows': target_rows,
+                            'values': result_values, 'mi': missing_int,
+                            'mv': missing_value})
 
     def __str__(self):
         return '%s.%s' % (self.link, self.target_expression)
@@ -149,7 +157,7 @@ class AggregateLink(LinkExpression):
 
     def evaluate(self, context):
         assert isinstance(context, EntityContext), \
-               "aggregates in groupby is currently not supported"
+               "one2many aggregates in groupby are currently not supported"
         link = self.get_link(context)
         assert link._link_type == 'one2many'
 
@@ -180,7 +188,8 @@ class AggregateLink(LinkExpression):
         else:
             assert np.all(source_ids == missing_int)
             # we need to make a copy because eval_rows modifies the array
-            # in place
+            # in place in some cases (countlink and descendants)
+            #TODO: document this fact in eval_rows
             source_rows = source_ids.copy()
 
         return self.eval_rows(source_rows, target_filter, context)
@@ -245,14 +254,21 @@ class SumLink(CountLink):
     def count(self, source_rows, target_filter, context):
         target_context = self.target_context(context)
         value_column = expr_eval(self.target_expr, target_context)
-        if target_filter is not None:
-            value_column = value_column[target_filter]
-        assert len(source_rows) == len(value_column)
-        res = np.bincount(source_rows, value_column)
+        if isinstance(value_column, np.ndarray) and value_column.shape:
+            if target_filter is not None:
+                value_column = value_column[target_filter]
+            assert len(source_rows) == len(value_column), \
+                   "%d != %d" % (len(source_rows), len(value_column))
 
-        # we need to explicitly convert to the type of the value field because
-        # bincount always return floats when its weight argument is used.
-        return res.astype(value_column.dtype)
+            res = np.bincount(source_rows, value_column)
+
+            # we need to explicitly convert to the type of the value field
+            # because bincount always return floats when its weight argument
+            # is used.
+            return res.astype(value_column.dtype)
+        else:
+            # suming a scalar value
+            return np.bincount(source_rows) * value_column
 
     def dtype(self, context):
         target_context = self.target_context(context)
@@ -276,8 +292,6 @@ class AvgLink(SumLink):
     def count(self, source_rows, target_filter, context):
         sums = super(AvgLink, self).count(source_rows, target_filter, context)
         count = np.bincount(source_rows)
-        # silence x/0 and 0/0
-        np.seterr(invalid='ignore', divide='ignore')
 
         # this is slightly sub optimal if the value column contains integers
         # as the data is converted from float to int then back to float
@@ -317,6 +331,7 @@ class MinLink(AggregateLink):
         for rownum, values in groups:
             if rownum == -1:
                 continue
+            # Note that v[n] is faster than using an itemgetter, even with map
             result[rownum] = aggregate_func(v[1] for v in values)
         return result
 

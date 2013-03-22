@@ -2,20 +2,20 @@ import numpy as np
 
 
 class EntityContext(object):
-    def __init__(self, entity, extra):
+    def __init__(self, entity, extra=None):
         self.entity = entity
+        if extra is None:
+            extra = {}
         self.extra = extra
         self['__entity__'] = entity
-#        self['__weight_col__'] = entity.weight_col
-#        self['__on_align_overflow__'] = entity.on_align_overflow
 
     def __getitem__(self, key):
         try:
             return self.extra[key]
         except KeyError:
             period = self.extra['period']
-            current_period = self.entity.array['period'][0]
-            if self._iscurrentperiod:
+            array_period = self.entity.array_period
+            if period == array_period:
                 try:
                     return self.entity.temp_variables[key]
                 except KeyError:
@@ -23,62 +23,41 @@ class EntityContext(object):
                         return self.entity.array[key]
                     except ValueError:
                         raise KeyError(key)
-            elif period == current_period - 1 and \
-                 self.entity.array_lag is not None:
-                try:
-                    return self.entity.array_lag[key]
-                except ValueError:
-                    raise KeyError(key)
             else:
+                if (self.entity.array_lag is not None and
+                    array_period is not None and
+                    period == array_period - 1 and
+                    key in self.entity.array_lag.dtype.fields):
+                    return self.entity.array_lag[key]
+
                 bounds = self.entity.output_rows.get(period)
                 if bounds is not None:
                     startrow, stoprow = bounds
                 else:
                     startrow, stoprow = 0, 0
-#                print "loading from disk...",
-#                res = timed(self.entity.table.read,
-#                             start=startrow, stop=stoprow,
-#                             field=key)
-#                for level in range(1, 10, 2):
-#                    print "   %d - compress:" % level,
-#                    arr = timed(compress_column, res, level)
-#                    print "decompress:",
-#                    timed(decompress_column, arr)
-#                return res
                 return self.entity.table.read(start=startrow, stop=stoprow,
                                               field=key)
 
+    # is the current array period the same as the context period?
     @property
-    def _iscurrentperiod(self):
-        current_array = self.entity.array
-
-        if current_array is None:
-            return False
-
-        #FIXME: in the rare case where there is nothing in the current array
-        #       we cannot know whether the period in the context is the
-        #       "current" period or a past period. For now we assume it is
-        #       the current period because it is the most likely situation, but
-        #       it is not correct!
-        if not len(current_array):
-            return True
-
-        # if the current period array is the same as the context period
-        return current_array['period'][0] == self.extra['period']
+    def _is_array_period(self):
+        return self.entity.array_period == self.extra['period']
 
     def __setitem__(self, key, value):
         self.extra[key] = value
 
     def __contains__(self, key):
-        try:
-            self[key]
-            return True
-        except KeyError:
-            return False
+        entity = self.entity
+        return (key in self.extra or
+                (self._is_array_period and key in entity.temp_variables) or
+                # use the fact that array fields should be = to table.fields
+                key in entity.array.dtype.fields)
 
-    def keys(self):
+    def keys(self, extra=True):
         res = list(self.entity.array.dtype.names)
         res.extend(sorted(self.entity.temp_variables.keys()))
+        if extra:
+            res.extend(sorted(self.extra.keys()))
         return res
 
     def get(self, key, elsevalue=None):
@@ -91,7 +70,7 @@ class EntityContext(object):
         return EntityContext(self.entity, self.extra.copy())
 
     def length(self):
-        if self._iscurrentperiod:
+        if self._is_array_period:
             return len(self.entity.array)
         else:
             period = self.extra['period']
@@ -108,7 +87,7 @@ class EntityContext(object):
     @property
     def id_to_rownum(self):
         period = self.extra['period']
-        if self._iscurrentperiod:
+        if self._is_array_period:
             return self.entity.id_to_rownum
         elif period in self.entity.output_index:
             return self.entity.output_index[period]
@@ -120,7 +99,18 @@ class EntityContext(object):
             return self.entity.input_index[period]
 
 
-def context_subset(context, index, keys=None):
+def new_context_like(context, length=None):
+    #FIXME: nan should come from somewhere else
+    if length is None:
+        length = context_length(context)
+    return {'period': context['period'],
+            '__len__': length,
+            '__entity__': context['__entity__'],
+            '__globals__': context['__globals__'],
+            'nan': float('nan')}
+
+
+def context_subset(context, index=None, keys=None):
     # if keys is None, take all fields
     if keys is None:
         keys = context.keys()
@@ -130,21 +120,19 @@ def context_subset(context, index, keys=None):
             index = np.array([], dtype=int)
         else:
             index = np.array(index)
-    if np.issubdtype(index.dtype, int):
+    if index is None:
+        length = context_length(context)
+    elif np.issubdtype(index.dtype, int):
         length = len(index)
     else:
         assert len(index) == context_length(context), \
                "boolean index has length %d instead of %d" % \
                (len(index), context_length(context))
         length = np.sum(index)
-    #FIXME: nan should come from somewhere else
-    result = {'period': context['period'],
-              '__len__': length,
-              '__entity__': context['__entity__'],
-              'nan': float('nan')}
+    result = new_context_like(context, length=length)
     for key in keys:
         value = context[key]
-        if isinstance(value, np.ndarray):
+        if index is not None and isinstance(value, np.ndarray) and value.shape:
             value = value[index]
         result[key] = value
     return result
@@ -155,8 +143,10 @@ def context_delete(context, rownum):
     # this copies everything including __len__, period, nan, ...
     for key in context.keys():
         value = context[key]
-        if isinstance(value, np.ndarray) and value.shape:
-            value = np.delete(value, rownum)
+        # globals are left unmodified
+        if key != '__globals__':
+            if isinstance(value, np.ndarray) and value.shape:
+                value = np.delete(value, rownum)
         result[key] = value
     result['__len__'] -= 1
     return result

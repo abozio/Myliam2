@@ -1,13 +1,12 @@
 import numpy as np
 
 from expr import expr_eval, collect_variables, traverse_expr
+from exprbases import EvaluableExpression
 from context import context_length, context_subset, context_delete
-from properties import EvaluableExpression
 
 from utils import loop_wh_progress
 
 import MunkresX
-import pdb
 # import munkresX 
 
 class Matching(EvaluableExpression):

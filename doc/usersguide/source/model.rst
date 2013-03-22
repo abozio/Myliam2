@@ -21,40 +21,51 @@ A LIAM 2 model has the following structure: ::
 
     simulation:
         ...
-        
+
+
+.. index:: globals declaration 
+.. _globals_declaration:
+
 globals
 =======
 
 The *globals* are variables (aka. parameters) that do not relate to any 
-particular *entity* defined in the model. They can be used in expressions across
-all entities.
+particular *entity* defined in the model. They can be used in expressions
+in any entity.
 
-Periodic globals can have a different value for each period. For example, the
-retirement age for women in Belgium has been gradually increasing from 61 in 
-1997 via 63 from 2003 onward, up to 65 in 2009. A global variable WEMRA has
-therefore been included.::
+LIAM2 currently supports two kinds of globals: tables and multi-dimensional
+arrays. Both kinds need their data to be imported (as explained in the
+:ref:`import_data` section) before they can be used. They also need to be
+declared in the simulation file, as follow: ::
+
+    globals:
+        mytable:
+            fields:
+                - MYINTFIELD: int
+                - MYFLOATFIELD: float
+
+        MYARRAY:
+            type: float
+
+Please see the :ref:`globals_usage` usage section for how to use them in 
+you expressions. 
+
+There are globals with a special status: **periodic globals**. Those globals
+have a different value for each period. *periodic* is thus a reserved word
+and is always a table, so the "fields" keyword can be omitted for that
+table.
+
+For example, the retirement age for women in Belgium has been gradually
+increasing from 61 in 1997 to 65 in 2009. A global variable WEMRA has
+therefore been included. ::
 
     globals:
         periodic:
+            # PERIOD is an implicit column of the periodic table
             - WEMRA: float
 
-Periodic globals can be used in any process. They can be used in two ways: like
-a normal variable, they will evaluate to their value for the period being
-simulated, for example ::
 
-    workstate: if(age >= WEMRA, 9, workstate)
-
-This changes the workstate of the individual to retired (9) if the age is higher
-than the required retirement age in that year.
-
-Another way to use them is to specify explicitly for which period you want them
-to be evaluated. This is done by using GLOBALNAME[period_expr]. periodexpr can
-be any expression yielding a valid period value. Here are a few artificial 
-examples: ::
-
-    workstate: if(age >= WEMRA[2010], 9, workstate)
-    workstate: if(age >= WEMRA[period - 1], 9, workstate)
-    workstate: if(age >= WEMRA[year_of_birth + 60], 9, workstate)
+.. index:: entities
 
 entities
 ========
@@ -91,6 +102,8 @@ LIAM 2 declares the entities as follows: ::
             
 As we use YAML as the description language, indentation and the use of ":" are
 important.
+
+.. index:: fields
 
 fields
 ------
@@ -136,8 +149,7 @@ stored for each period in the output file.
 However, in practice, there are often some fields which are not present in the
 input file. They will need to be calculated later by the model, and you need to
 tell LIAM2 that the field is missing, by using "initialdata: false" in the
-definition for that field (see the *agegroup* variable in the example below). 
-
+definition for that field (see the *agegroup* variable in the example below).
 
 *example* ::
 
@@ -150,34 +162,20 @@ definition for that field (see the *agegroup* variable in the example below).
 Field names must be unique per entity (i.e. several entities may have a field
 with the same name). 
 
-Temporary variables are not considered as a field and don't have to be declared.
+Temporary variables are not considered as a fields and do not have to be
+declared.
 
 links
 -----
 
-Entities can be linked with each other or with other entities, for example, 
-individuals belong to households, and mothers are linked to their children, 
-while partners are interlinked as well.
+Individuals can be linked with each other or with individuals of other
+entities, for example, mothers are linked to their children, partners are
+linked to each other and persons belong to households. 
 
-LIAM 2 allows two types of links: many2one and one2many. 
-A typical link has the following form: ::
-
-    name: {type: <type>, target: <entity>, field: <name of link field>}
-    
-LIAM 2 uses integer fields to establish links between entities. Those
-integer fields contain the id-number of the linked individual. To save space
-and memory, one could think of using a link field to code a status with 
-negative values. For example, a field partner_id with the id-number when the
-person is in a relationship and with value -1 when single, -2 when 
-divorced and -3 when widow. However, even if possible, that method is not advised.
-The win associated is often small compared to the risk of having the program 
-looking for someone with a -1 id-number.
+For details, see the :ref:`links_label` section.
 
 
-
-
-More detail, see :ref:`links_label`.
-
+.. index:: macros
 
 macros
 ------
@@ -233,19 +231,24 @@ More detail, see :ref:`processes_label`.
 simulation
 ==========
 
-The *simulation* block includes the location of the datasets (**input**, **output**), the number of periods and
-the start period. It sets what processes defined in the **entities** block are simulated (since some can be
+The *simulation* block includes the location of the datasets (**input**,
+**output**), the number of periods and the start period. It sets what
+processes defined in the **entities** block are simulated (since some can be
 omitted), and the order in which this is done.
 
-Please, note that even if in the given examples, periods seem to be year, the time period can have other
-interpretation, a month for example. In that case, it is better to have all values expressed in that time 
-period. Age should an age in month and then still an integer more than be a float.
+Please note that even though in all our examples periods correspond to years,
+the interpretation of the period is up to the modeller and can thus be an
+integer number representing anything (a day, a month, a quarter or anything
+you can think of). This is an important choice as it will impact the whole
+model.
 
-Suppose that we have a model that starts in 2002 and has to simulate for 10 periods. Furthermore, suppose that we have two
-object or entities: individuals and households. The model starts by some initial processes (grouped under the header *init*)
-that precede the actual prospective simulation of the model, and that only apply to the observed dataset in 2002. These
-initial simulations can pertain to the level of the individual or the household. Use the *init* block to calculate variables
-for the starting period.
+Suppose that we have a model that starts in 2002 and has to simulate for 10
+periods. Furthermore, suppose that we have two entities: individuals and
+households. The model starts by some initial processes (defined in the *init*
+section) that precede the actual prospective simulation of the model, and that
+only apply to the observed dataset in 2001 (or before). These initial
+simulations can pertain to the level of the individual or the household.
+Use the *init* block to calculate variables for the starting period.
 
 The prospective part of the model starts by a number of sub-processes setting the household size and composition. Next, two
 processes apply on the level of the individual, changing the age and agegroup. Finally, mortality and fertility are
@@ -329,7 +332,8 @@ directory where the simulation file is located.
 start_period
 ------------
 
-Defines the first period (integer) to be simulated. 
+Defines the first period (integer) to be simulated. It should be consistent
+(use the same scale/time unit) with the "period" column in the input data.
 
 periods
 -------

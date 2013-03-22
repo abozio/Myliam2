@@ -1,8 +1,10 @@
 from __future__ import division
-import re
-import sys
+from collections import Counter
 
 import numpy as np
+
+from utils import LabeledArray, ExplainTypeError, add_context
+from context import EntityContext
 
 try:
     import numexpr
@@ -26,6 +28,7 @@ except ImportError:
         return eval(expr, complete_globals, {})
 
 num_tmp = 0
+timings = Counter()
 
 
 def get_tmp_varname():
@@ -36,7 +39,7 @@ def get_tmp_varname():
     return tmp_varname
 
 type_to_idx = {bool: 0, np.bool_: 0,
-               int: 1, np.int32: 1, np.intc: 1, np.int64: 1,
+               int: 1, np.int32: 1, np.intc: 1, np.int64: 1, np.longlong: 1,
                float: 2, np.float64: 2}
 idx_to_type = [bool, int, float]
 
@@ -86,11 +89,18 @@ def coerce_types(context, *args):
     return idx_to_type[max(dtype_indices)]
 
 
-def as_string(expr, context):
+def as_simple_expr(expr, context):
     if isinstance(expr, Expr):
-        return expr.as_string(context)
+        return expr.as_simple_expr(context)
     else:
         return expr
+
+
+def as_string(expr):
+    if isinstance(expr, Expr):
+        return expr.as_string()
+    else:
+        return str(expr)
 
 
 def traverse_expr(expr, context):
@@ -100,11 +110,34 @@ def traverse_expr(expr, context):
         return ()
 
 
+def gettype(value):
+    if isinstance(value, np.ndarray):
+        type_ = value.dtype.type
+    elif isinstance(value, (tuple, list)):
+        type_ = type(value[0])
+    else:
+        type_ = type(value)
+    return normalize_type(type_)
+
+
 def dtype(expr, context):
     if isinstance(expr, Expr):
         return expr.dtype(context)
     else:
-        return normalize_type(type(expr))
+        return gettype(expr)
+
+
+def ispresent(values):
+    dt = values.dtype
+    if np.issubdtype(dt, float):
+        return np.isfinite(values)
+    elif np.issubdtype(dt, int):
+        return values != missing_values[int]
+    elif np.issubdtype(dt, bool):
+#        return values != missing_values[bool]
+        return True
+    else:
+        raise Exception('%s is not a supported type for ispresent' % dt)
 
 
 # context is needed because in LinkValue we need to know what is the current
@@ -120,43 +153,37 @@ def collect_variables(expr, context):
 
 def expr_eval(expr, context):
     if isinstance(expr, Expr):
+        globals_data = context['__globals__']
+        if globals_data is not None:
+            globals_names = set(globals_data.keys())
+            if 'periodic' in globals_data:
+                globals_names |= set(globals_data['periodic'].dtype.names)
+        else:
+            globals_names = set()
+
         for var_name in expr.collect_variables(context):
-            if var_name not in context:
+            if var_name not in globals_names and var_name not in context:
                 raise Exception("variable '%s' is unknown (it is either not "
                                 "defined or not computed yet)" % var_name)
         return expr.evaluate(context)
+
+        # there are several flaws with this approach:
+        # 1) I don't get action times (csv et al)
+        # 2) these are cumulative times (they include child expr/processes)
+        #    we might want to store the timings in a tree (based on call stack
+        #    depth???) so that I could rebuild both cumulative and "real"
+        #    timings.
+        # 3) the sum of timings is wrong since children/nested expr times count
+        #    both for themselves and for all their parents
+#        time, res = gettime(expr.evaluate, context)
+#        timings[expr.__class__.__name__] += time
+#        return res
+    elif isinstance(expr, list) and any(isinstance(e, Expr) for e in expr):
+        return [expr_eval(e, context) for e in expr]
+    elif isinstance(expr, tuple) and any(isinstance(e, Expr) for e in expr):
+        return tuple([expr_eval(e, context) for e in expr])
     else:
         return expr
-
-
-def add_context(exception, s):
-    msg = exception.args[0] if exception.args else ''
-    encoding = sys.getdefaultencoding()
-    expr_str = s.encode(encoding, 'replace')
-    msg = "%s\n%s" % (expr_str, msg)
-    cls = exception.__class__
-    return cls(msg)
-
-
-class ExplainTypeError(type):
-    def __call__(cls, *args, **kwargs):
-        try:
-            return type.__call__(cls, *args, **kwargs)
-        except TypeError, e:
-            if hasattr(cls, 'func_name'):
-                funcname = cls.func_name
-            else:
-                funcname = cls.__name__.lower()
-            if funcname is not None:
-                msg = e.args[0].replace('__init__()', funcname)
-            else:
-                msg = e.args[0]
-
-            def repl(matchobj):
-                needed, given = int(matchobj.group(1)), int(matchobj.group(2))
-                return "%d arguments (%d given)" % (needed - 1, given - 1)
-            msg = re.sub('(\d+) arguments \((\d+) given\)', repl, msg)
-            raise TypeError(msg)
 
 
 class Expr(object):
@@ -194,7 +221,7 @@ class Expr(object):
     def __add__(self, other):
         return Addition('+', self, other)
     def __sub__(self, other):
-        return Substraction('-', self, other)
+        return Subtraction('-', self, other)
     def __mul__(self, other):
         return Multiplication('*', self, other)
     def __div__(self, other):
@@ -225,7 +252,7 @@ class Expr(object):
     def __radd__(self, other):
         return Addition('+', other, self)
     def __rsub__(self, other):
-        return Substraction('-', other, self)
+        return Subtraction('-', other, self)
     def __rmul__(self, other):
         return Multiplication('*', other, self)
     def __rdiv__(self, other):
@@ -262,7 +289,6 @@ class Expr(object):
         return Not('~', self)
 
     def evaluate(self, context):
-#        print "evaluate", self
 #        FIXME: this cannot work, because dict.__contains__(k) calls k.__eq__
 #        which has a non standard meaning
 #        if self in expr_cache:
@@ -270,32 +296,206 @@ class Expr(object):
 #        else:
 #            s = self.as_string(context)
 #            expr_cache[self] = s
-        s = self.as_string(context)
-        r = context.get(s)
-        if r is not None:
-            return r
 
+        simple_expr = self.as_simple_expr(context)
+        if isinstance(simple_expr, Variable) and simple_expr.name in context:
+            return context[simple_expr.name]
+
+        # check for labeled arrays, to work around the fact that numexpr
+        # does not preserve ndarray subclasses.
+
+        # avoid checking for arrays types in the past, because that is a
+        # costly operation (context[var_name] fetches the column from disk
+        # in that case). This probably prevents us from doing stuff like
+        # align(lag(groupby() / groupby())), but it is a limitation I can
+        # live with to avoid hitting the disk twice for each disk access.
+
+        #TODO: I should rewrite this whole mess when my "dtype" method
+        # supports ndarrays and LabeledArray so that I can get the dtype from
+        # the expression instead of from actual values.
+        labels = None
+        if isinstance(context, EntityContext) and context._is_array_period:
+            for var_name in simple_expr.collect_variables(context):
+                # var_name should always be in the context at this point
+                # because missing temporaries should have been already caught
+                # in expr_eval
+                value = context[var_name]
+                if isinstance(value, LabeledArray):
+                    if labels is None:
+                        labels = (value.dim_names, value.pvalues)
+                    else:
+                        if labels[0] != value.dim_names:
+                            raise Exception('several arrays with inconsistent '
+                                            'labels (dimension names) in the '
+                                            'same expression: %s vs %s'
+                                            % (labels[0], value.dim_names))
+                        if not np.array_equal(labels[1], value.pvalues):
+                            raise Exception('several arrays with inconsistent '
+                                            'axis values in the same '
+                                            'expression: \n%s\n\nvs\n\n%s'
+                                            % (labels[1], value.pvalues))
+
+        s = simple_expr.as_string()
         try:
-            return evaluate(s, context, {}, truediv='auto')
+            res = evaluate(s, context, {}, truediv='auto')
+            if labels is not None:
+                # This is a hack which relies on the fact that currently
+                # all the expression we evaluate through numexpr preserve
+                # array shapes, but if we ever use numexpr reduction
+                # capabilities, we will be in trouble
+                res = LabeledArray(res, labels[0], labels[1])
+            return res
         except KeyError, e:
             raise add_context(e, s)
         except Exception, e:
             raise
 
+    def as_simple_expr(self, context):
+        '''
+        evaluate any construct that is not supported by numexpr and
+        create temporary variables for them
+        '''
+        raise NotImplementedError
 
-#class IsPresent(Expr):
-#    def __init__(self, expr):
-#        self.expr = expr
-#
-#    def simplify(self):
-#        dtype = self.expr.dtype()
-#        if np.issubdtype(dtype, float):
-#            return np.isfinite(values)
-#        elif np.issubdtype(dtype, int):
-#            return expr != missing_values[int]
-#        elif np.issubdtype(dtype, bool):
-#            return expr != missing_values[bool]
+    def as_string(self):
+        raise NotImplementedError
 
+    def __getitem__(self, key):
+        #TODO: we should be able to know at "compile" time if this is a
+        # scalar or a vector and disallow getitem in case of a scalar
+        return SubscriptedExpr(self, key)
+
+    def __getattr__(self, key):
+        return ExprAttribute(self, key)
+
+    def collect_variables(self, context):
+        raise NotImplementedError
+
+
+class EvaluableExpression(Expr):
+    def evaluate(self, context):
+        raise NotImplementedError
+
+    def as_simple_expr(self, context):
+        tmp_varname = get_tmp_varname()
+        result = self.evaluate(context)
+        context[tmp_varname] = result
+        return Variable(tmp_varname, gettype(result))
+
+
+class SubscriptedExpr(EvaluableExpression):
+    def __init__(self, expr, key):
+        self.expr = expr
+        self.key = key
+
+    def __str__(self):
+        key = self.key
+        if isinstance(key, slice):
+            key_str = '%s:%s' % (key.start, key.stop)
+            if key.step is not None:
+                key_str += ':%s' % key.step
+        else:
+            key_str = str(key)
+        return '%s[%s]' % (self.expr, key_str)
+    __repr__ = __str__
+
+    def evaluate(self, context):
+        expr = expr_eval(self.expr, context)
+        key = self.key
+        if isinstance(key, tuple):
+            key = tuple(expr_eval(k, context) for k in key)
+        elif isinstance(key, slice):
+            key = slice(expr_eval(key.start, context),
+                        expr_eval(key.stop, context),
+                        expr_eval(key.step, context))
+        else:
+            key = expr_eval(key, context)
+        #XXX: return -1 for out_of_bounds like for globals?
+        return expr[key]
+
+    def collect_variables(self, context):
+        exprvars = collect_variables(self.expr, context)
+        return exprvars | collect_variables(self.key, context)
+
+    def traverse(self, context):
+        for node in traverse_expr(self.expr, context):
+            yield node
+        for node in traverse_expr(self.key, context):
+            yield node
+        yield self
+
+
+class ExprAttribute(EvaluableExpression):
+    def __init__(self, expr, key):
+        self.expr = expr
+        self.key = key
+
+    def __str__(self):
+        return '%s.%s' % (self.expr, self.key)
+    __repr__ = __str__
+
+    def evaluate(self, context):
+        # currently key can only be a string but if I ever expose getattr,
+        # it could be an expr too
+        return getattr(expr_eval(self.expr, context),
+                       expr_eval(self.key, context))
+
+    def __call__(self, *args, **kwargs):
+        return ExprCall(self, args, kwargs)
+
+    def collect_variables(self, context):
+        exprvars = collect_variables(self.expr, context)
+        return exprvars | collect_variables(self.key, context)
+
+    def traverse(self, context):
+        for node in traverse_expr(self.expr, context):
+            yield node
+        for node in traverse_expr(self.key, context):
+            yield node
+        yield self
+
+
+#TODO: factorize with NumpyFunction & FunctionExpression
+class ExprCall(EvaluableExpression):
+    def __init__(self, expr, args, kwargs):
+        self.expr = expr
+        self.args = args
+        self.kwargs = kwargs
+
+    def evaluate(self, context):
+        expr = expr_eval(self.expr, context)
+        args = [expr_eval(arg, context) for arg in self.args]
+        kwargs = dict((k, expr_eval(v, context))
+                      for k, v in self.kwargs.iteritems())
+        return expr(*args, **kwargs)
+
+    def __str__(self):
+        args = [repr(a) for a in self.args]
+        kwargs = ['%s=%r' % (k, v) for k, v in self.kwargs.iteritems()]
+        return '%s(%s)' % (self.expr, ', '.join(args + kwargs))
+    __repr__ = __str__
+
+    def collect_variables(self, context):
+        args_vars = [collect_variables(arg, context) for arg in self.args]
+        args_vars.extend(collect_variables(v, context)
+                         for v in self.kwargs.itervalues())
+        return set.union(*args_vars) if args_vars else set()
+
+    def traverse(self, context):
+        for node in traverse_expr(self.expr, context):
+            yield node
+        for arg in self.args:
+            for node in traverse_expr(arg, context):
+                yield node
+        for kwarg in self.kwargs.itervalues():
+            for node in traverse_expr(kwarg, context):
+                yield node
+        yield self
+
+
+#############
+# Operators #
+#############
 
 class UnaryOp(Expr):
     def __init__(self, op, expr):
@@ -312,8 +512,11 @@ class UnaryOp(Expr):
         print indent, self.op
         self.expr.show(indent + '    ')
 
-    def as_string(self, context):
-        return "(%s%s)" % (self.op, self.expr.as_string(context))
+    def as_simple_expr(self, context):
+        return self.__class__(self.op, self.expr.as_simple_expr(context))
+
+    def as_string(self):
+        return "(%s%s)" % (self.op, self.expr.as_string())
 
     def __str__(self):
         return "(%s%s)" % (self.op, self.expr)
@@ -355,10 +558,16 @@ class BinaryOp(Expr):
             yield c
         yield self
 
-    def as_string(self, context):
-        expr1 = as_string(self.expr1, context)
-        expr2 = as_string(self.expr2, context)
-        return "(%s %s %s)" % (expr1, self.op, expr2)
+    def as_simple_expr(self, context):
+        expr1 = as_simple_expr(self.expr1, context)
+        expr2 = as_simple_expr(self.expr2, context)
+        return self.__class__(self.op, expr1, expr2)
+
+    # We can't simply use __str__ because of where vs if
+    def as_string(self):
+        return "(%s %s %s)" % (as_string(self.expr1),
+                               self.op,
+                               as_string(self.expr2))
 
     def dtype(self, context):
         return coerce_types(context, self.expr1, self.expr2)
@@ -444,7 +653,7 @@ class Or(LogicalOp):
     accepted_types = (bool, np.bool_)
 
 
-class Substraction(BinaryOp):
+class Subtraction(BinaryOp):
     neutral_value = 0.0
     overpowering_value = None
     accepted_types = (float,)
@@ -471,34 +680,31 @@ class Division(BinaryOp):
         return float
 
 
+#############
+# Variables #
+#############
+
 class Variable(Expr):
-    def __init__(self, name, dtype=None, value=None):
+    def __init__(self, name, dtype=None):
         self.name = name
         self._dtype = dtype
-        self.value = value
 
     def traverse(self, context):
         yield self
 
     def __str__(self):
-        if self.value is None:
-            return self.name
-        else:
-            return str(self.value)
+        return self.name
     __repr__ = __str__
+    as_string = __str__
 
-    def as_string(self, context):
-        return self.__str__()
+    def as_simple_expr(self, context):
+        return self
 
     def simplify(self):
-        if self.value is None:
-            return self
-        else:
-            return self.value
+        return self
 
     def show(self, indent):
-        value = "[%s]" % self.value if self.value is not None else ''
-        print indent, self.name, value
+        print indent, self.name
 
     def collect_variables(self, context):
         return set([self.name])
@@ -516,25 +722,17 @@ class ShortLivedVariable(Variable):
         return set()
 
 
-class SubscriptableVariable(Variable):
-    def __getitem__(self, key):
-        return SubscriptedVariable(self.name, self._dtype, key)
-
-
-class SubscriptedVariable(Variable):
-    def __init__(self, name, dtype, key):
+class GlobalVariable(Variable):
+    def __init__(self, tablename, name, dtype=None):
         Variable.__init__(self, name, dtype)
-        self.key = key
-
-    def __str__(self):
-        return '%s[%s]' % (self.name, self.key)
-    __repr__ = __str__
+        self.tablename = tablename
 
     #XXX: inherit from EvaluableExpression?
-    def as_string(self, context):
+    def as_simple_expr(self, context):
         result = self.evaluate(context)
-        if isinstance(self.key, int):
-            tmp_varname = '__%s_%s' % (self.name, self.key)
+        period = self._eval_key(context)
+        if isinstance(period, int):
+            tmp_varname = '__%s_%s' % (self.name, period)
             if tmp_varname in context:
                 assert context[tmp_varname] == result
             else:
@@ -542,82 +740,96 @@ class SubscriptedVariable(Variable):
         else:
             tmp_varname = get_tmp_varname()
             context[tmp_varname] = result
-        return tmp_varname
+        return Variable(tmp_varname)
+
+    def _eval_key(self, context):
+        return context['period']
 
     def evaluate(self, context):
-        period = expr_eval(self.key, context)
-        globals = context['__globals__']
-        try:
-            globals_periods = globals['PERIOD']
-        except ValueError:
-            globals_periods = globals['period']
-        period_idx = period - globals_periods[0]
+        key = self._eval_key(context)
+        globals_data = context['__globals__']
+        globals_table = globals_data[self.tablename]
 
-        if self.name not in globals.dtype.fields:
+        #TODO: this row computation should be encapsulated in the
+        # globals_table object and the index column should be configurable
+        colnames = globals_table.dtype.names
+        if 'period' in colnames or 'PERIOD' in colnames:
+            try:
+                globals_periods = globals_table['PERIOD']
+            except ValueError:
+                globals_periods = globals_table['period']
+            base_period = globals_periods[0]
+            row = key - base_period
+        else:
+            row = key
+        if self.name not in globals_table.dtype.fields:
             raise Exception("Unknown global: %s" % self.name)
-        column = globals[self.name]
-        num_periods = len(globals_periods)
+        column = globals_table[self.name]
+        numrows = len(column)
         missing_value = get_missing_value(column)
-
-        if isinstance(period_idx, np.ndarray):
-            out_of_bounds = (period_idx < 0) | (period_idx >= num_periods)
-            period_idx[out_of_bounds] = -1
-            return np.where(out_of_bounds, missing_value, column[period_idx])
+        if isinstance(row, np.ndarray) and row.shape:
+            out_of_bounds = (row < 0) | (row >= numrows)
+            row[out_of_bounds] = -1
+            return np.where(out_of_bounds, missing_value, column[row])
         else:
-            out_of_bounds = (period_idx < 0) or (period_idx >= num_periods)
-            return column[period_idx] if not out_of_bounds else missing_value
+            out_of_bounds = (row < 0) or (row >= numrows)
+            return column[row] if not out_of_bounds else missing_value
 
-
-class Where(Expr):
-    func_name = 'if'
-
-    def __init__(self, cond, iftrue, iffalse):
-        self.cond = cond
-        self.iftrue = iftrue
-        self.iffalse = iffalse
-
-    def traverse(self, context):
-        for node in traverse_expr(self.cond, context):
-            yield node
-        for node in traverse_expr(self.iftrue, context):
-            yield node
-        for node in traverse_expr(self.iffalse, context):
-            yield node
-        yield self
-
-    def as_string(self, context):
-        cond = as_string(self.cond, context)
-
-        # filter is stored as an unevaluated expression
-        filter_expr = context.get('__filter__')
-
-        if filter_expr is None:
-            context['__filter__'] = self.cond
-        else:
-            context['__filter__'] = filter_expr & self.cond
-        iftrue = as_string(self.iftrue, context)
-
-        if filter_expr is None:
-            context['__filter__'] = ~self.cond
-        else:
-            context['__filter__'] = filter_expr & ~self.cond
-        iffalse = as_string(self.iffalse, context)
-
-        context['__filter__'] = None
-        return "where(%s, %s, %s)" % (cond, iftrue, iffalse)
-
-    def __str__(self):
-        return "if(%s, %s, %s)" % (self.cond, self.iftrue, self.iffalse)
-    __repr__ = __str__
-
-    def dtype(self, context):
-        assert dtype(self.cond, context) == bool
-        return coerce_types(context, self.iftrue, self.iffalse)
+    def __getitem__(self, key):
+        return SubscriptedGlobal(self.tablename, self.name, self._dtype, key)
 
     def collect_variables(self, context):
-        condvars = collect_variables(self.cond, context)
-        iftruevars = collect_variables(self.iftrue, context)
-        iffalsevars = collect_variables(self.iffalse, context)
-        return condvars | iftruevars | iffalsevars
+        #FIXME: this is a quick hack to make "othertable" work.
+        # We should return prefixed variable instead.
+        if self.tablename != 'periodic':
+            return set()
+        else:
+            return Variable.collect_variables(self, context)
 
-functions = {'where': Where}
+
+class SubscriptedGlobal(GlobalVariable):
+    def __init__(self, tablename, name, dtype, key):
+        GlobalVariable.__init__(self, tablename, name, dtype)
+        self.key = key
+
+    def __str__(self):
+        return '%s[%s]' % (self.name, self.key)
+    __repr__ = __str__
+
+    def _eval_key(self, context):
+        return expr_eval(self.key, context)
+
+
+class GlobalArray(Variable):
+    def __init__(self, name, dtype=None):
+        Variable.__init__(self, name, dtype)
+
+    def as_simple_expr(self, context):
+        globals_data = context['__globals__']
+        result = globals_data[self.name]
+        #XXX: maybe I should just use self.name?
+        tmp_varname = '__%s' % self.name
+        if tmp_varname in context:
+            assert context[tmp_varname] == result
+        context[tmp_varname] = result
+        return Variable(tmp_varname)
+
+
+class GlobalTable(object):
+    def __init__(self, name, fields):
+        '''fields is a list of tuples (name, type)'''
+
+        self.name = name
+        self.fields = fields
+        self.fields_map = dict(fields)
+
+    def __getattr__(self, key):
+        return GlobalVariable(self.name, key, self.fields_map[key])
+
+    def traverse(self, context):
+        yield self
+
+    def __str__(self):
+        #XXX: print (a subset of) data instead?
+        return 'Table(%s)' % ', '.join([name for name, _ in self.fields])
+    __repr__ = __str__
