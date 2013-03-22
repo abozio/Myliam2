@@ -147,7 +147,7 @@ for (i in which(couple==1)) {
 # ind[which(res %in% ind[ConjToo,"res"]),]
 # table(ind$couple)
 
-############################## Liste des naissances des enfants ################################
+############################## Liste des enfants ################################
 
 #on a deux cas: les enfants cohabitant a) et les enfants décohabitant b). Ils sont enregistrés différemment. 
 #pour les premiers, on regarde pour chacun qui est leur pere et qui est leur mere dans les tables parent1 et parent2
@@ -234,12 +234,49 @@ for (i in which(parent1>0)) {
 }
 
 
+
+# on fait aussi tourner ce qui suit parce qu'on a besoin du nombre d'enfant
+
+for (i in which(anais<1995)) { #on ne tourne que sur les plus de 14 ans
+  # on définit la liste des enfants hors ménage list
+  list <- NULL
+  if (lienpref[i]=="00") {
+    for (k in 1:12) {
+      if (get(paste0("hodln",k))[i] %in% c('1','2')) {
+        list <- c(list,get(paste0("hodan",k))[i])
+      }
+    }
+  }
+  if (lienpref[i]=="01") {
+    for (k in 1:12) {
+      if (get(paste0("hodln",k))[i] %in% c('1','3')) {
+        list <- c(list,get(paste0("hodan",k))[i])
+      }
+    }
+  }
+  
+  # on a tous les pour calculer le nombre d enfant
+  # on prend d'abord les enfants cohabitant
+  l <-  union( anais[which(parent1==i)] ,  anais[which(parent2==i)]) #nombre d'enfant cohabitant avec i
+  nb_enf[i] <-  length(l)+length(list)
+  if (length(list)>0) {
+  }
+}
+
+
+
+
+rm(ConjMiss,ConjToo,ToRemove,i,k,l,list,ll,parent1,parent2,ajout.parent) # Clean the workspace
+
 age =  2009 - ind$anais
 period = rep(2009,taille)
 person = cbind(ind$id,period,ind$res,age,ind$sexe,conj,mere,pere,situa,ind[,"zsalaires_i"])
 colnames(person)[c(1,3,5,6,10)] <- c("id","res","sexe","conjoint","salaire")
 person =apply(person, 2,as.numeric)
 person[which(is.na(person))]  <- 0
+
+
+source("lien_parenf.R")
 
 write.csv(person,file=paste0(dest,"person2009.csv"),row.names=F)
 

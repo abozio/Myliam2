@@ -1,0 +1,16 @@
+La modèle peut actuellement tourner sur plusieurs bases issues de l'enquête patrimoine. 
+
+* Import/import.R
+	La base la plus simple, utilise Import/import.R, elle ne contient que les variables utiles de l'enquête patrimoine pour que Model tourne ensuite. 
+	-> Il faut donc bien ajouter ici les variables que l'on ajoute au modèle. 
+	Cette base est appelée directement par le programme import_patrimoine puisqu'il s'agit de fichier .csv
+
+* Lien 
+	La base précédente a un porblème, elle ne fait pas le lien entre enfant et parent lorsque les enfants sont hors du ménage. Le programme lien_parent_enfant\import_lien_parenf_10.R travaille sur les données crée un fichier lien.csv. 
+Le matching est fait en Liam mais il pourrait être fait en R. Il y a trois façons de faire (en fait plus si on joue sur les variables mais il y a trois méthodes pour que je vois). J'en ai implémenté deux. La permière match les gens en fonction d'un score (match_score)). La seconde, reprend la méthode de l'équipe Destinie, elle pourrait largement être implémentée en R mais on verra plus loin qu'on gagne à ce que ce soit fait en Liam parce que l'on peut appliquer cela simplement à une base de données étendues. 
+	* méthode destinie
+		Comme on match sur des variables qualitatives (ou pseudo-qualitative, j'entends, entière comme l'age), on peut classer parent et enfant par catégorie et associer aléatoirement ceux des catégories correspondantes. Avec ceux, non matchés, 
+on classe on réitère mais en prenant des catégories plus petites. 
+	* méthode score 
+		On définit simplement un score puis on utilise le matching simple de Liam, on balaye tous les individus, pour chacun d'entre eux, on trouve le meilleur match puis on passe au suivant en retirant la possibilité de se matcher avec les individus déjà appariés. 
+	Pour plus d'info sur les liens voir de la doc et des échanges avec RPS par mail  

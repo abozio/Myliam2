@@ -12,7 +12,6 @@ chemin = 'M:\\Myliam2\\'
 chemin = 'T:\\Myliam2\\'
 chemin = 'C:\\Myliam2\\'
 
-print chemin
 #import
 sys.argv.append('import')
 #sys.argv.append('C:\\Users\\a.eidelman\\Desktop\\GenIPP_Pyth\\liam\\test\\examples\\demo_import.yml')
@@ -40,15 +39,15 @@ fichier= chemin+'Genebios\\console_genebios.yml'
 
 fichier= chemin+'Patrimoine\\lien_parent_enfant\\match_par_enf.yml'
 fichier= chemin+'Patrimoine\\lien_parent_enfant\\expand.yml'
-fichier= chemin+'Patrimoine\\lien_parent_enfant\\match_par_enf.yml'
+fichier= chemin+'Patrimoine\\lien_parent_enfant\\match_score.yml'
 
 
-fichier= chemin+'Model\\expand.yml'
-
+#fichier= chemin+'Model\\expand.yml'
+#
 fichier= chemin+'Model\\expand.yml'
 fichier= chemin+'Model\\console.yml'
 # fichier= chemin+'test\\small\\simulation.yml'
-
+fichier= chemin+'Model\\expand.yml'
 #simulation= Simulation.from_yaml(fichier,
 #                     input_dir=None,
 #                    input_file=None,

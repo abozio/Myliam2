@@ -14,8 +14,9 @@ entities:
             marriage:
                 - nb_children_ind : countlink(children1)+countlink(children2)
                 - to_couple: 0
+                # TODO: changer l'age par l'age_corr = age moins age de fin d'études 
                 - to_couple: if((age >= 18) and (age <= 90) and not ISMARRIED and ISSINGLE,
-                                 if(ISMALE,
+                                 if(ISMALE, 
                                     logit_score(-73.10 + 8.96 * age - 0.408* age**2 + 0.00796 * age ** 3 -5.72/100000*(age ** 4)),
                                     logit_score(-68.49 + 9.06 * age -0.441* age**2 + 0.00914 * age ** 3 -6.91/100000*(age ** 4) + 0.41*(nb_children_ind==0)) ),
                                  to_couple)
@@ -47,7 +48,8 @@ entities:
                 - newhousehold: new('menage', filter=justcoupled and ISFEMALE,
                                      region_id=choice([0, 1, 2, 3], [0.1, 0.2, 0.3, 0.4]),
                                      rent=1500)
-                - newhousehold: if(justcoupled and ISMALE, conj.newhousehold, newhousehold) #same newhousehold for huseband, useful beyong
+                - newhousehold: if(justcoupled and ISMALE, conj.newhousehold, newhousehold) 
+                # same newhousehold for huseband, useful beyong
                 # dealing with res, foy, quires and quifoy
                 # first with children living with their parent we can identify by pere.res == res or mere.res == res 
                 - res: if(mater.justcoupled,

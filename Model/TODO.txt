@@ -4,8 +4,8 @@ Avec les vraies données de patrimoine :
 
 regler ces histoires de matching et de munkres rectangulaire
 
-mieux gerer les logements avec de la place, des tailles de logement, etc
+mieux gerer les logements avec de la place, des tailles de logement, etc et surtout faire quelque chose avec les propriétaires
 Remarque : logement divorce, mariage, independance
 
 Faire un schema ou un tableau avec ou intervient chaque truc
-Faire un check qui tounre à la fin de chaque simulation
+Faire un check qui tourne à la fin de chaque simulation

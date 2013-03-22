@@ -1,5 +1,6 @@
 EMMENAG Année d'emménagement dans la résidence principale
-
+####### variable utile pour remonter le passé des individus
+JEQUIT, FORSEUL # depart faoyer parental
 
 # lecture des données de l'enquêtre patrimoine
 # selection des valeurs utiles pour le matching.

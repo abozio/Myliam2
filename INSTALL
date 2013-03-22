@@ -1,0 +1,125 @@
+Installation
+------------
+
+* First install Python:
+
+- Python 2.7.x (either 32 bits or 64 bits version): 
+  http://www.python.org/download/releases/
+
+Alexis : until now, I worked with 32-bits version, I would be pleased if someone try the 64.
+
+Make sure both PYTHONDIR and PYTHONDIR\Scripts is in your system PATH
+   where PYTHONDIR is the directory where you installed Python
+
+* Then you need to install all our other dependencies (third-party packages for
+Python). If you are on Windows, the easiest way to install them is to use the
+(unoffical) binary packages from Christoph Gohlke at: 
+
+  http://www.lfd.uci.edu/~gohlke/pythonlibs/
+
+Third party packages:
+
+For the Liam2 part : 
+
+- Numpy 1.7.0 or later (for your version of python): 
+  http://sourceforge.net/projects/numpy/files/NumPy/
+
+- PyTables 2.2.1 or later (for your version of python):
+  http://sourceforge.net/projects/pytables/files/pytables/
+  
+- Numexpr 2.0 or later (for your version of python):
+  http://code.google.com/p/numexpr/downloads/
+  
+- PyYAML 3.0.8 or later (for your version of python):
+  http://pyyaml.org/wiki/PyYAML
+  
+- carray 0.4 or later (for your version of python):  
+  http://carray.pytables.org/download/
+
+
+For the OpenFisca part: 
+
+latest version of : 
+- scipy
+- pandas
+- rpy2
+- PyQt4
+- dateutil
+- distribute
+- openpyxl
+- matplotlib
+- pywin32
+- ipython
+
+
+Optional dependencies:
+
+- Cython 0.16 or later (needed to build the C extensions, see below).
+  http://www.cython.org/
+  
+- Sphinx 1.0 or later (to "build" the documentation to html, or pdf) 
+  http://www.sphinx-doc.org/
+
+- ViTables 2.1 or later (to "see" tables in h5 format) 
+  http://vitables.org/
+
+
+* Install R
+  http://cran.r-project.org/
+  
+  Important, you must add two keys to your "variables d'environnement"       (right-click on computer then -> properties -> advanced system parameter ->   variables d'environnement : the first one is R_HOME with your path to R (in   my case it's C:\Program Files\R\R-2.15.1) the second one R_USER with your   name (Alexis in my case, nice to meet you). 
+
+* Install notepad++
+  The best way to install notepad to run our YAML file, is to download Liam2   source code (http://liam2.plan.be/). A bundle is included alredy configured   to run YAML code of Liam2.  
+
+* Install Aptana Studio 3 
+  http://www.aptana.com/products/studio3
+
+  You can then import project you want. For example, you can import the     previous file downloaded from liam2.plan.be as a new PyDev project. 
+
+   If you want to use git from Aptana, go to Help -> Install new software
+In the work with section add github - http://download.eclipse.org/egit/updates
+Then download Egit (and Egit-Source I don't know which one of them I use). 
+
+   I suggest also to install github (https://github.com/) and to create an account on it. 
+
+
+
+Building the C extensions
+-------------------------
+
+Additionally, if you want to get maximum performance, you will also need to
+build the C extensions. This is optional but recommended.
+
+For that you need to have cython (see above) and a C compiler installed, then
+go to the src/ directory of LIAM2 and type:
+
+  python setup.py build_ext --inplace
+
+If all goes according to plan, you should then be up and running.
+
+Building the documentation
+--------------------------
+
+0) make sure both PYTHONDIR and PYTHONDIR\Scripts is in your system PATH
+   where PYTHONDIR is the directory where you installed Python
+
+1) Install sphinx 
+2) Open a command prompt 
+3) Go to the documentation directory. For example:
+ 
+  cd liam2\doc\usersguide\
+
+3) Launch the build: 
+
+  make html
+
+4) Open the result in your favourite web browser. It is located in:
+  
+  build/html/index.html
+
+
+Launching ViTables
+-------------------------
+
+I don't know how to run it simply. The solution I use is to run the viewer.py file which I let on my desktop (open with python.exe). 

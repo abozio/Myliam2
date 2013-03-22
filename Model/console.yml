@@ -13,6 +13,7 @@ import:
     moving:     _house//moving.yml
     conso:      _consumption//conso.yml
     wealth:     _wealth//save.yml
+    # TODO:  entreprise: _jobs//jobs
 
 globals:
     periodic:
@@ -35,6 +36,7 @@ simulation:
         ]
         - menage: [init_value,consumption,saving]
         - declar: [rien]
+
         
     input:
         file: simple2009.h5
@@ -43,4 +45,5 @@ simulation:
 
     # first simulated period
     start_period: 2010
-    periods: 4
+    periods: 2
+    
