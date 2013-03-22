@@ -22,6 +22,9 @@ entities:
                 - rent: 1000 *( (countlink(persons) - countlink(persons, age < 18))*1.5 + countlink(persons, age < 18)*0.6)
             init_value:
                 - value: 100000
+            init_owner: 
+                - owner: id + choice([0, 1, 2, 3], [0.1, 0.2, 0.3, 0.4])
+                # It's clear it's not serious for now
             household_composition:
                 - nb_persons: countlink(persons)
                 - nb_children: countlink(persons, age < 18)
@@ -29,3 +32,4 @@ entities:
             empty_house:
                 - empty: (nb_persons==0)
                 # - remove(empty) 
+            

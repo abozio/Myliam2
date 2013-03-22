@@ -30,4 +30,11 @@ entities:
         
     declar: 
         path: C:\Myliam2\Patrimoine\import\menage2009.csv   
-
+        fields: 
+            - pond: float
+            
+    companies: 
+        path: C:\Myliam2\Patrimoine\import\menage2009.csv           
+        fields: 
+            - pond: float
+            

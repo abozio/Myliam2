@@ -13,7 +13,7 @@ import:
     moving:     _house//moving.yml
     conso:      _consumption//conso.yml
     wealth:     _wealth//save.yml
-    # TODO:  entreprise: _jobs//jobs
+    entreprise: _jobs//companies.yml
 
 globals:
     periodic:
@@ -21,8 +21,10 @@ globals:
 
 simulation:
     init: 
-        - menage: [init_region_id,init_rent,init_value,init_wealth]
+        - menage: [init_region_id,init_rent,init_value,init_wealth, init_owner]
         - person: [init_couple,init_education_level,init_workstate,init_foy]
+        - companies: [init_size]
+        
     processes:
         #- person: [age, agegroup, dump_info, show_demography , marriage]
         - menage: [household_composition,empty_house]
@@ -36,7 +38,7 @@ simulation:
         ]
         - menage: [init_value,consumption,saving]
         - declar: [rien]
-
+        - companies: [rien]
         
     input:
         file: simple2009.h5

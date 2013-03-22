@@ -695,18 +695,18 @@ entities:
                               
                 # sidewalk method 
                 # ------------
-                - int_aligned_SW: align(0.2,
-                                     expressions=[gender],
-                                     possible_values=[[False, True]],
-                                     proportions=[0.1, 0.2], method='sidewalk')
-                - num_aligned: grpcount(int_aligned_SW)
-                - num_aligned_women: grpcount(int_aligned_SW and not gender)
-                - num_aligned_men: grpcount(int_aligned_SW and gender)
-                - assertTrue(num_aligned_women - 0.1 * num_women < 1.0)
-                - assertTrue(num_aligned_men - 0.2 * num_men < 1.0)
-                - assertEqual(num_aligned_women + num_aligned_men, num_aligned)
-                - show( 'nb aligned', grpcount(int_aligned))
-                - show( 'nb aligned SW', grpcount(int_aligned_SW))
+                # - int_aligned_SW: align(0.2,
+                                     # expressions=[gender],
+                                     # possible_values=[[False, True]],
+                                     # proportions=[0.1, 0.2], method='sidewalk')
+                # - num_aligned: grpcount(int_aligned_SW)
+                # - num_aligned_women: grpcount(int_aligned_SW and not gender)
+                # - num_aligned_men: grpcount(int_aligned_SW and gender)
+                # - assertTrue(num_aligned_women - 0.1 * num_women < 1.0)
+                # - assertTrue(num_aligned_men - 0.2 * num_men < 1.0)
+                # - assertEqual(num_aligned_women + num_aligned_men, num_aligned)
+                # - show( 'nb aligned', grpcount(int_aligned))
+                # - show( 'nb aligned SW', grpcount(int_aligned_SW))
                 
                 
             test_align_abs:

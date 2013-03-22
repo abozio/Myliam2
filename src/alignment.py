@@ -126,7 +126,6 @@ def align_get_indices_nd(ctx_length, groups, need, filter_value, score,
                             raise Exception("Sidewalk method can be used only with a"
                                             " score between 0 and 1. You may want to use"
                                             " a logistic function ")
-
                         local_indices = range(len(group_maybe_indices))
                         sorted_local_indices = np.random.permutation(local_indices)
                         sorted_global_indices = \
@@ -146,10 +145,9 @@ def align_get_indices_nd(ctx_length, groups, need, filter_value, score,
                     U=random()+np.arange(maybe_to_take)             
                     #on the random sample, score are cumulated and then, we extract indices
                     #of each value before each value of U
-                    score_norm = np.array(score, dtype=float)
-                    score_norm = score_norm * len(sorted_global_indices)/score[sorted_local_indices].sum()
-                    indices_to_take = np.searchsorted(np.cumsum(score_norm[sorted_local_indices]), U)
-                    indices_to_take = sorted_local_indices[indices_to_take] 
+                    print (method)
+                    indices_to_take = np.searchsorted(np.cumsum(score[sorted_local_indices]), U)
+                    indices_to_take = sorted_global_indices[indices_to_take] 
                 underflow = maybe_to_take - len(indices_to_take)
                 if underflow > 0:
                     total_underflow += underflow

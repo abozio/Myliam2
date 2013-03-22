@@ -25,11 +25,7 @@ sys.argv.append(fichier)
 
 #demo01
 fichier=chemin+'test\\examples\\demo01.yml'
-# on ne peut plus ajouter comme argument -i ou --interactive 
-# en revanche on pourrait préciser les tables d'entrées et de sortie si elles n'étaient pas au même endroit que le fichier yml
-
-## ici tourne Simulation.from_yaml et éventuellement Simulation.interactive
-
+fichier= chemin + 'tests\\functional\\simulation.yml'
 fichier= chemin+'Genebios\\vieillissement_genebios.yml'
 
 fichier= chemin+'Patrimoine\\duplication\\expand.yml'
@@ -48,7 +44,7 @@ fichier= chemin+'Patrimoine\\lien_parent_enfant\\match_score.yml'
 #
 #fichier= chemin+'Model\\expand.yml'
 fichier= chemin+'Model\\console.yml'
-fichier= 'C:\\liam\\tests\\functional\\simulation.yml'
+
 
 #simulation= Simulation.from_yaml(fichier,
 #                     input_dir=None,
